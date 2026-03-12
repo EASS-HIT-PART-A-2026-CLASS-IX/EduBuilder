@@ -1,3 +1,8 @@
+git rm --cached .env.example
+git add .gitignore
+git commit -m "Ignore .env.example"
+git push
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
