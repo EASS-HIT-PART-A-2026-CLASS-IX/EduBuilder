@@ -1,0 +1,77 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    image: python:3.11-slim
+    command: >
+      bash -c "
+      pip install uv &&
+      uv pip install --system -r requirements.txt &&
+      python -m scripts.migrate &&
+      uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./app.db
+      - REDIS_URL=redis://redis:6379/0
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev_secret_key}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    working_dir: /app
+
+  frontend:
+    image: python:3.11-slim
+    command: >
+      bash -c "
+      pip install uv &&
+      uv pip install --system -r requirements.txt &&
+      streamlit run frontend/app.py --server.port 8501 --server.address 0.0.0.0
+      "
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://api:8000
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - api
+    volumes:
+      - .:/app
+    working_dir: /app
+
+  worker:
+    image: python:3.11-slim
+    command: >
+      bash -c "
+      pip install uv &&
+      uv pip install --system -r requirements.txt &&
+      python -m scripts.migrate &&
+      python -m scripts.refresh
+      "
+    environment:
+      - DATABASE_URL=sqlite:///./app.db
+      - REDIS_URL=redis://redis:6379/0
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    volumes:
+      - .:/app
+    working_dir: /app

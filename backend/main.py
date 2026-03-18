@@ -1,275 +1,249 @@
+import json
 import os
-from urllib.parse import quote
+from contextlib import asynccontextmanager
+from datetime import timedelta
+from typing import Optional
 
+from fastapi import Depends, FastAPI, HTTPException, Security
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, SecurityScopes
 from google import genai
 from google.genai import types
-import requests
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Header
-from fastapi.responses import HTMLResponse, RedirectResponse
+from redis.asyncio import Redis
+from sqlmodel import Session, select
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from .database import supabase_auth, supabase_admin
-from .models import ProjectCreate, EmailLoginRequest, ChatRequest, CourseGenerationResponse, DraftState
+from .auth import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    create_access_token,
+    decode_access_token,
+    get_password_hash,
+    optional_security,
+    required_security,
+    verify_password,
+)
+from .database import get_session, init_db
+from .models import (
+    ChatRequest,
+    Course,
+    CourseCreate,
+    CourseGenerationResponse,
+    CourseRead,
+    DraftState,
+    EmailLoginRequest,
+    EmailRegisterRequest,
+    User,
+)
 
-load_dotenv()
 
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "rotem.pasharel1@gmail.com").strip().lower()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    app.state.redis = Redis.from_url(
+        os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+        decode_responses=True,
+    )
+    yield
+    await app.state.redis.aclose()
 
-app = FastAPI(title="Educational AI Platform API")
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
-SUPABASE_AUTH_KEY = os.environ.get("SUPABASE_PUBLISHABLE_KEY", "")
-SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:8501")
-BACKEND_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000")
+app = FastAPI(title="Educational AI Platform API", lifespan=lifespan)
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if request.url.path == "/health":
+            return await call_next(request)
+
+        redis = getattr(request.app.state, "redis", None)
+        if redis is None:
+            return await call_next(request)
+
+        client_host = request.client.host if request.client else "unknown"
+        key = f"rate_limit:{client_host}"
+        limit = 60
+        window = 60
+
+        try:
+            count = await redis.incr(key)
+            if count == 1:
+                await redis.expire(key, window)
+
+            remaining = max(limit - count, 0)
+            if count > limit:
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Too Many Requests"},
+                    headers={
+                        "X-RateLimit-Limit": str(limit),
+                        "X-RateLimit-Remaining": "0",
+                    },
+                )
+
+            response = await call_next(request)
+            response.headers["X-RateLimit-Limit"] = str(limit)
+            response.headers["X-RateLimit-Remaining"] = str(remaining)
+            return response
+        except Exception:
+            return await call_next(request)
+
+
+app.add_middleware(RateLimitMiddleware)
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "version": "1.0.0"}
+
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-
-if not GEMINI_API_KEY:
-    raise RuntimeError("Missing GEMINI_API_KEY in backend .env")
-
-genai_client = genai.Client(api_key=GEMINI_API_KEY)
-
-def require_supabase():
-    if not SUPABASE_URL or not SUPABASE_AUTH_KEY or not SUPABASE_SERVICE_KEY:
-        raise HTTPException(status_code=500, detail="Supabase not configured")
-
-    if not supabase_auth or not supabase_admin:
-        raise HTTPException(status_code=500, detail="Supabase clients not configured")
+genai_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 
-def get_bearer_token(authorization: str | None) -> str:
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Missing bearer token")
+def get_current_user(
+    security_scopes: SecurityScopes,
+    token: HTTPAuthorizationCredentials = Depends(required_security),
+    session: Session = Depends(get_session),
+) -> User:
+    payload = decode_access_token(token.credentials)
 
-    return authorization.split(" ", 1)[1].strip()
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    token_scopes = payload.get("scopes", [])
+    for scope in security_scopes.scopes:
+        if scope not in token_scopes:
+            raise HTTPException(status_code=403, detail=f"Missing scope: {scope}")
+
+    return user
 
 
-def get_auth_user(access_token: str) -> dict:
-    require_supabase()
+def get_optional_user(
+    token: HTTPAuthorizationCredentials | None = Depends(optional_security),
+    session: Session = Depends(get_session),
+) -> Optional[User]:
+    if token is None:
+        return None
 
     try:
-        res = requests.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "apikey": SUPABASE_AUTH_KEY,
-            },
-            timeout=20,
+        payload = decode_access_token(token.credentials)
+    except HTTPException:
+        return None
+
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+
+    return session.get(User, user_id)
+
+
+def require_admin(user: User = Security(get_current_user, scopes=["admin"])):
+    return user
+
+
+def build_token_for_user(user: User) -> str:
+    scopes = ["read", "write"]
+    if user.role == "admin":
+        scopes.append("admin")
+
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    return create_access_token(
+        data={"sub": user.id, "scopes": scopes},
+        expires_delta=access_token_expires,
+    )
+
+
+def enrich_courses_with_owner(courses: list[Course], session: Session) -> list[dict]:
+    enriched: list[dict] = []
+    for course in courses:
+        owner = session.get(User, course.owner_id)
+        item = CourseRead(
+            id=course.id,
+            owner_id=course.owner_id,
+            title=course.title,
+            content=course.content,
+            is_public=course.is_public,
+            weekly_digest=course.weekly_digest,
+            created_at=course.created_at,
+            owner_name=owner.full_name if owner else "Unknown",
+            owner_email=owner.email if owner else "Unknown",
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Auth request failed: {e}")
-
-    if res.status_code != 200:
-        raise HTTPException(status_code=401, detail="Invalid or expired session")
-
-    return res.json()
-
-
-def sync_profile(auth_user: dict) -> dict:
-    user_id = auth_user["id"]
-    metadata = auth_user.get("user_metadata") or {}
-
-    email = auth_user.get("email")
-    email_normalized = (email or "").strip().lower()
-
-    full_name = (
-        metadata.get("full_name")
-        or metadata.get("name")
-        or metadata.get("user_name")
-    )
-
-    avatar_url = (
-        metadata.get("avatar_url")
-        or metadata.get("picture")
-    )
-
-    role = "admin" if email_normalized == ADMIN_EMAIL else "user"
-
-    existing_res = supabase_admin.table("profiles").select("*").eq("id", user_id).execute()
-    existing = existing_res.data[0] if existing_res.data else None
-
-    if existing:
-        update_data = {
-            "email": email,
-            "full_name": full_name,
-            "avatar_url": avatar_url,
-            "role": role,
-        }
-        supabase_admin.table("profiles").update(update_data).eq("id", user_id).execute()
-        existing.update(update_data)
-        return existing
-
-    new_profile = {
-        "id": user_id,
-        "email": email,
-        "full_name": full_name,
-        "avatar_url": avatar_url,
-        "role": role,
-    }
-    supabase_admin.table("profiles").insert(new_profile).execute()
-    return new_profile
-
-
-def get_current_profile(authorization: str | None) -> dict:
-    access_token = get_bearer_token(authorization)
-    auth_user = get_auth_user(access_token)
-    return sync_profile(auth_user)
-
-
-def require_admin(authorization: str | None) -> dict:
-    profile = get_current_profile(authorization)
-    if profile.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
-    return profile
-
-
-def enrich_projects_with_owner(projects: list[dict]) -> list[dict]:
-    if not projects:
-        return []
-
-    owner_ids = list({p["owner_id"] for p in projects if p.get("owner_id")})
-    if not owner_ids:
-        return projects
-
-    profiles_res = (
-        supabase_admin.table("profiles")
-        .select("id, email, full_name")
-        .in_("id", owner_ids)
-        .execute()
-    )
-    profiles_map = {p["id"]: p for p in (profiles_res.data or [])}
-
-    enriched = []
-    for project in projects:
-        owner = profiles_map.get(project.get("owner_id"), {})
-        item = dict(project)
-        item["owner_name"] = owner.get("full_name")
-        item["owner_email"] = owner.get("email")
-        enriched.append(item)
-
+        enriched.append(item.model_dump())
     return enriched
 
 
-@app.get("/auth/google/start")
-def auth_google_start():
-    require_supabase()
+@app.post("/auth/register")
+def register(user_data: EmailRegisterRequest, session: Session = Depends(get_session)):
+    email = user_data.email.strip().lower()
+    existing = session.exec(select(User).where(User.email == email)).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
 
-    redirect_to = f"{BACKEND_URL}/auth/google/callback"
-    authorize_url = (
-        f"{SUPABASE_URL}/auth/v1/authorize"
-        f"?provider=google&redirect_to={quote(redirect_to, safe='')}"
+    new_user = User(
+        email=email,
+        hashed_password=get_password_hash(user_data.password),
+        full_name=user_data.full_name,
+        role="admin" if email == os.environ.get("ADMIN_EMAIL", "admin@example.com") else "user",
     )
-    return RedirectResponse(url=authorize_url, status_code=302)
+    session.add(new_user)
+    session.commit()
+    session.refresh(new_user)
+
+    access_token = build_token_for_user(new_user)
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
-@app.post("/auth/email/start")
-def auth_email_start(payload: EmailLoginRequest):
-    require_supabase()
+@app.post("/auth/login")
+def login(user_data: EmailLoginRequest, session: Session = Depends(get_session)):
+    email = user_data.email.strip().lower()
+    user = session.exec(select(User).where(User.email == email)).first()
 
-    email = (payload.email or "").strip().lower()
-    if not email:
-        raise HTTPException(status_code=400, detail="Email is required")
+    if not user or not verify_password(user_data.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
 
-    try:
-        supabase_auth.auth.sign_in_with_otp(
-            {
-                "email": email,
-                "options": {
-                    "should_create_user": True,
-                    "email_redirect_to": f"{BACKEND_URL}/auth/google/callback",
-                },
-            }
-        )
-        return {"status": "ok", "message": "Magic link sent"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    access_token = build_token_for_user(user)
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
-@app.get("/auth/google/callback", response_class=HTMLResponse)
-def auth_google_callback():
-    html = f"""
-    <!doctype html>
-    <html>
-    <head>
-      <meta charset="utf-8" />
-      <title>Signing you in...</title>
-    </head>
-    <body>
-      <script>
-        const hash = new URLSearchParams(window.location.hash.slice(1));
-        const query = new URLSearchParams(window.location.search);
-
-        const accessToken =
-          hash.get("access_token") ||
-          query.get("access_token");
-
-        const errorDescription =
-          hash.get("error_description") ||
-          query.get("error_description") ||
-          query.get("error") ||
-          "Sign-in failed";
-
-        const target = new URL("{FRONTEND_URL}");
-
-        if (accessToken) {{
-          target.searchParams.set("access_token", accessToken);
-        }} else {{
-          target.searchParams.set("auth_error", errorDescription);
-        }}
-
-        window.location.replace(target.toString());
-      </script>
-    </body>
-    </html>
-    """
-    return HTMLResponse(content=html)
+@app.get("/admin/only")
+def admin_only(user: User = Security(get_current_user, scopes=["admin"])):
+    return {"status": "admin_verified", "email": user.email}
 
 
 @app.get("/me")
-def me(authorization: str | None = Header(default=None)):
-    try:
-        profile = get_current_profile(authorization)
-        return {
-            "id": profile["id"],
-            "email": profile.get("email"),
-            "full_name": profile.get("full_name"),
-            "avatar_url": profile.get("avatar_url"),
-            "role": profile.get("role", "user"),
-        }
-    except Exception as e:
-        print("PROFILE ERROR:", e)
-        raise
+def me(user: User = Depends(get_current_user)):
+    return {
+        "id": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "role": user.role,
+    }
 
 
 @app.post("/chat/generate_course")
-def generate_course(payload: ChatRequest):
-    prompt = (payload.prompt or "").strip()
-    context = (payload.context or "").strip()
+def generate_course(payload: ChatRequest, user: User = Depends(get_current_user)):
+    if not genai_client:
+        raise HTTPException(
+            status_code=400,
+            detail="Gemini API Key is not configured on this server. AI features are disabled.",
+        )
 
-    if not prompt:
-        raise HTTPException(status_code=400, detail="Prompt is required.")
+    prompt = payload.prompt.strip()
+    context = (payload.context or "").strip()
 
     try:
         system_instructions = (
             "You are an expert AI teacher that builds educational courses chapter by chapter. "
-            "STRICT OUTPUT RULES — you MUST follow these exactly:\n"
-            "1. PAGES: Generate EXACTLY 5 detailed educational pages for this chapter. "
-            "Each page must have a clear title and rich, thorough content in Markdown. "
-            "Do NOT generate fewer than 5 pages under any circumstances.\n"
-            "2. QUIZ: After the pages, create EXACTLY 5 multiple-choice questions that test "
-            "understanding of the content just generated. Each question MUST have exactly 4 answer options. "
-            "Do NOT skip the quiz.\n"
-            "3. CHAT MESSAGE: Write a short message summarising this chapter, suggesting the next "
-            "logical topic, and asking the user if they want to continue or finish and save.\n"
-            "4. LANGUAGE: ALL output (titles, content, questions, options, explanations, chat message) "
-            "MUST be in English only, regardless of the language the user writes in."
+            "Generate exactly 5 pages, then exactly 5 multiple-choice questions, then a short follow-up message. "
+            "All output must be in English and valid JSON matching the provided schema."
         )
 
-        full_prompt = (
-            f"Context/Previous Lesson context: {context}\n\n"
-            f"User Prompt: {prompt}"
-        )
+        full_prompt = f"Context/Previous Lesson context: {context}\n\nUser Prompt: {prompt}"
 
         response = genai_client.models.generate_content(
             model="gemini-2.5-flash",
@@ -284,214 +258,280 @@ def generate_course(payload: ChatRequest):
             ),
         )
 
-        response_text = (response.text or "").strip()
-
-        if not response_text:
+        if not response.text:
             raise HTTPException(status_code=500, detail="Gemini returned an empty response.")
 
-        import json
-        structured_data = json.loads(response_text)
-
-        return structured_data
-
+        return json.loads(response.text)
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gemini error: {e}")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Gemini error: {exc}")
+
 
 @app.post("/chat/draft")
 def save_chat_draft(
     draft: DraftState,
-    authorization: str | None = Header(default=None)
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ):
-    profile = get_current_profile(authorization)
     try:
         draft_content = draft.model_dump_json()
-        
-        # Check if draft already exists
-        existing = supabase_admin.table("projects").select("id").eq("owner_id", profile["id"]).eq("title", "__DRAFT_STATE__").execute()
-        
-        if existing.data:
-            response = supabase_admin.table("projects").update({"content": draft_content}).eq("id", existing.data[0]["id"]).execute()
+        existing = session.exec(
+            select(Course).where(
+                Course.owner_id == user.id,
+                Course.title == "__DRAFT_STATE__",
+            )
+        ).first()
+
+        if existing:
+            existing.content = draft_content
+            session.add(existing)
         else:
-            data = {
-                "owner_id": profile["id"],
-                "title": "__DRAFT_STATE__",
-                "content": draft_content,
-                "is_public": False,
-            }
-            response = supabase_admin.table("projects").insert(data).execute()
-            
+            session.add(
+                Course(
+                    owner_id=user.id,
+                    title="__DRAFT_STATE__",
+                    content=draft_content,
+                    is_public=False,
+                )
+            )
+
+        session.commit()
         return {"status": "ok"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+
 
 @app.get("/chat/draft")
-def load_chat_draft(authorization: str | None = Header(default=None)):
-    profile = get_current_profile(authorization)
+def load_chat_draft(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
     try:
-        response = supabase_admin.table("projects").select("content").eq("owner_id", profile["id"]).eq("title", "__DRAFT_STATE__").execute()
-        if response.data:
-            import json
-            return json.loads(response.data[0]["content"])
+        existing = session.exec(
+            select(Course).where(
+                Course.owner_id == user.id,
+                Course.title == "__DRAFT_STATE__",
+            )
+        ).first()
+        if existing:
+            return json.loads(existing.content)
         return None
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.delete("/chat/draft")
-def delete_chat_draft(authorization: str | None = Header(default=None)):
-    """Explicitly clear the draft — called when user starts a new course."""
-    profile = get_current_profile(authorization)
+def delete_chat_draft(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
     try:
-        supabase_admin.table("projects").delete().eq("owner_id", profile["id"]).eq("title", "__DRAFT_STATE__").execute()
+        existing = session.exec(
+            select(Course).where(
+                Course.owner_id == user.id,
+                Course.title == "__DRAFT_STATE__",
+            )
+        ).first()
+        if existing:
+            session.delete(existing)
+            session.commit()
         return {"status": "ok"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/courses")
+def list_courses(
+    session: Session = Depends(get_session),
+    mine: bool = False,
+    user: User | None = Depends(get_optional_user),
+):
+    try:
+        stmt = select(Course).where(Course.title != "__DRAFT_STATE__")
+
+        if mine:
+            if not user:
+                raise HTTPException(status_code=401, detail="Authentication required for mine=true")
+            stmt = stmt.where(Course.owner_id == user.id)
+        else:
+            stmt = stmt.where(Course.is_public.is_(True))
+
+        courses = session.exec(stmt.order_by(Course.created_at.desc())).all()
+        return enrich_courses_with_owner(courses, session)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/courses/shared")
-def get_shared_courses():
+def get_shared_courses(session: Session = Depends(get_session)):
     try:
-        response = (
-            supabase_admin.table("projects")
-            .select("*")
-            .eq("is_public", True)
-            .order("created_at", desc=True)
-            .execute()
-        )
-        return enrich_projects_with_owner(response.data or [])
-    except Exception as e:
-        print(f"DB Error: {e}")
+        courses = session.exec(
+            select(Course)
+            .where(Course.is_public.is_(True), Course.title != "__DRAFT_STATE__")
+            .order_by(Course.created_at.desc())
+        ).all()
+        return enrich_courses_with_owner(courses, session)
+    except Exception:
         return []
 
 
 @app.get("/courses/my")
-def get_my_courses(authorization: str | None = Header(default=None)):
-    profile = get_current_profile(authorization)
-
+def get_my_courses(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
     try:
-        response = (
-            supabase_admin.table("projects")
-            .select("*")
-            .eq("owner_id", profile["id"])
-            .neq("title", "__DRAFT_STATE__")
-            .order("created_at", desc=True)
-            .execute()
-        )
-        return enrich_projects_with_owner(response.data or [])
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        courses = session.exec(
+            select(Course)
+            .where(Course.owner_id == user.id, Course.title != "__DRAFT_STATE__")
+            .order_by(Course.created_at.desc())
+        ).all()
+        return enrich_courses_with_owner(courses, session)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/courses/{course_id}")
+def get_course(
+    course_id: str,
+    session: Session = Depends(get_session),
+    user: User | None = Depends(get_optional_user),
+):
+    try:
+        course = session.get(Course, course_id)
+        if not course:
+            raise HTTPException(status_code=404, detail="Course not found")
+
+        if not course.is_public:
+            if user is None or (user.id != course.owner_id and user.role != "admin"):
+                raise HTTPException(status_code=403, detail="Course is private")
+
+        enriched = enrich_courses_with_owner([course], session)
+        return enriched[0]
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+def get_or_create_guest_user(session: Session) -> User:
+    guest = session.exec(select(User).where(User.email == "rotem.pasharel1@gmail.com")).first()
+    if guest:
+        return guest
+
+    guest = User(
+        email="rotem.pasharel1@gmail.com",
+        hashed_password=get_password_hash("guestpassword"),
+        full_name="Rotem Pasharel",
+        role="user",
+    )
+    session.add(guest)
+    session.commit()
+    session.refresh(guest)
+    return guest
 
 
 @app.post("/courses")
 def save_course(
-    project: ProjectCreate,
-    authorization: str | None = Header(default=None),
+    project: CourseCreate,
+    user: User | None = Depends(get_optional_user),
+    session: Session = Depends(get_session),
 ):
-    profile = get_current_profile(authorization)
-
     try:
-        data = {
-            "owner_id": profile["id"],
-            "title": project.title,
-            "content": project.content,
-            "is_public": project.is_public,
-        }
-        response = supabase_admin.table("projects").insert(data).execute()
-        return response.data[0] if response.data else {"status": "ok"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        owner = user or get_or_create_guest_user(session)
+        new_course = Course(
+            owner_id=owner.id,
+            title=project.title,
+            content=project.content,
+            is_public=project.is_public,
+        )
+        session.add(new_course)
+        session.commit()
+        session.refresh(new_course)
+        return new_course
+    except Exception as exc:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.put("/courses/{course_id}")
 def update_course(
     course_id: str,
-    project: ProjectCreate,
-    authorization: str | None = Header(default=None),
+    project: CourseCreate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ):
-    """Allow a user to update their own course content and title."""
-    profile = get_current_profile(authorization)
-
     try:
-        # Verify ownership
-        check = (
-            supabase_admin.table("projects")
-            .select("id")
-            .eq("id", course_id)
-            .eq("owner_id", profile["id"])
-            .execute()
-        )
-        if not check.data:
+        existing = session.get(Course, course_id)
+        if not existing or existing.owner_id != user.id:
             raise HTTPException(status_code=404, detail="Course not found or no permission.")
 
-        data = {
-            "title": project.title,
-            "content": project.content,
-            "is_public": project.is_public,
-        }
-        response = supabase_admin.table("projects").update(data).eq("id", course_id).execute()
-        return response.data[0] if response.data else {"status": "ok"}
+        existing.title = project.title
+        existing.content = project.content
+        existing.is_public = project.is_public
+        session.add(existing)
+        session.commit()
+        session.refresh(existing)
+        return existing
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+    except Exception as exc:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
 
 @app.get("/admin/courses")
-def get_all_courses(authorization: str | None = Header(default=None)):
-    require_admin(authorization)
-
+def get_all_courses(
+    admin_user: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
     try:
-        response = (
-            supabase_admin.table("projects")
-            .select("*")
-            .order("created_at", desc=True)
-            .execute()
-        )
-        return enrich_projects_with_owner(response.data or [])
-    except Exception as e:
-        print(f"DB Error: {e}")
+        courses = session.exec(
+            select(Course)
+            .where(Course.title != "__DRAFT_STATE__")
+            .order_by(Course.created_at.desc())
+        ).all()
+        return enrich_courses_with_owner(courses, session)
+    except Exception:
         return []
-
 
 @app.delete("/admin/courses/{course_id}")
 def delete_course(
     course_id: str,
-    authorization: str | None = Header(default=None),
+    admin_user: User = Depends(require_admin),
+    session: Session = Depends(get_session),
 ):
-    require_admin(authorization)
-
     try:
-        response = supabase_admin.table("projects").delete().eq("id", course_id).execute()
-        return {"status": "success", "deleted": response.data}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        existing = session.get(Course, course_id)
+        if existing:
+            session.delete(existing)
+            session.commit()
+        return {"status": "success"}
+    except Exception as exc:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.delete("/courses/{course_id}")
 def delete_my_course(
     course_id: str,
-    authorization: str | None = Header(default=None),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ):
-    """Allow a user to delete their own course by ID."""
-    profile = get_current_profile(authorization)
-
     try:
-        # Make sure the project belongs to the current user
-        check = (
-            supabase_admin.table("projects")
-            .select("id")
-            .eq("id", course_id)
-            .eq("owner_id", profile["id"])
-            .execute()
-        )
-        if not check.data:
-            raise HTTPException(status_code=404, detail="Course not found or you don't have permission to delete it.")
+        existing = session.get(Course, course_id)
+        if not existing or existing.owner_id != user.id:
+            raise HTTPException(status_code=404, detail="Course not found or no permission.")
 
-        response = supabase_admin.table("projects").delete().eq("id", course_id).execute()
-        return {"status": "success", "deleted": response.data}
+        session.delete(existing)
+        session.commit()
+        return {"status": "success"}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))

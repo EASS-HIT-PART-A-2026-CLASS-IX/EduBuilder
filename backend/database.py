@@ -1,21 +1,32 @@
 import os
-from supabase import create_client
-from dotenv import load_dotenv
+from typing import Annotated, Generator
 
-load_dotenv()
+from fastapi import Depends
+from sqlmodel import Session, SQLModel, create_engine
 
-url = os.environ.get("SUPABASE_URL", "").strip()
-publishable_key = os.environ.get("SUPABASE_PUBLISHABLE_KEY", "").strip()
-service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./app.db")
 
-def make_client(key: str):
-    if not url or not key:
-        return None
-    return create_client(url, key)
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {},
+)
 
-supabase_auth = make_client(publishable_key)
-supabase_admin = make_client(service_role_key)
 
-print("SUPABASE_URL loaded:", bool(url))
-print("PUBLISHABLE loaded:", bool(publishable_key), publishable_key[:20] if publishable_key else None)
-print("SERVICE_ROLE loaded:", bool(service_role_key), service_role_key[:20] if service_role_key else None)
+def init_db() -> None:
+    """
+    EX3 relies on Alembic migrations instead of create_all().
+
+    For quick EX1-style local experiments you may opt in to auto table creation by setting:
+        AUTO_CREATE_TABLES=1
+    """
+    if os.environ.get("AUTO_CREATE_TABLES", "0") == "1":
+        SQLModel.metadata.create_all(engine)
+
+
+def get_session() -> Generator[Session, None, None]:
+    with Session(engine) as session:
+        yield session
+
+
+SessionDep = Annotated[Session, Depends(get_session)]

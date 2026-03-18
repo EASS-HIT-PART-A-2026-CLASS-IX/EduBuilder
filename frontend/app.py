@@ -1,3 +1,4 @@
+import os
 import html
 import re
 import json
@@ -5,9 +6,9 @@ import base64
 import streamlit as st
 import requests
 
+
 # Backend API Base URL
-API_URL = "http://127.0.0.1:8000"
-GOOGLE_LOGIN_URL = f"{API_URL}/auth/google/start"
+API_URL = os.environ.get("API_URL", "http://127.0.0.1:8000")
 
 CARD_COLORS = [
     "linear-gradient(135deg, #1f78c1 0%, #3ca0f0 100%)",
@@ -186,37 +187,6 @@ def apply_custom_css():
         .top-spacer {
             height: 2vh;
         }
-
-        .google-login-link {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            width: 100%;
-            padding: 0.85rem 1rem;
-            border-radius: 12px;
-            background: white;
-            color: #1f2937 !important;
-            text-decoration: none !important;
-            font-weight: 700;
-            font-size: 1rem;
-            box-shadow: 0 6px 18px rgba(0,0,0,0.15);
-            transition: all 0.25s ease;
-            border: 1px solid rgba(255,255,255,0.35);
-            box-sizing: border-box;
-        }
-
-        .google-login-link:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 22px rgba(0,0,0,0.18);
-            color: #111827 !important;
-        }
-
-        .google-note {
-            text-align: center;
-            color: rgba(255,255,255,0.88);
-            margin-top: 0.85rem;
-            font-size: 0.95rem;
-        }
          .user-card {
             display: flex;
             align-items: center;
@@ -391,8 +361,7 @@ def apply_custom_css():
 [data-testid="stSidebarCollapseButton"] > div,
 [data-testid="stSidebarCollapseButton"] > span,
 [data-testid="stSidebarCollapseButton"] svg,
-[data-testid="stSidebarCollapseButton"] i,
-.st-emotion-cache-5r6ut5.exvv1vr0 {
+[data-testid="stSidebarCollapseButton"] i {
     color: transparent !important;
     font-size: 0 !important;
     line-height: 0 !important;
@@ -520,32 +489,6 @@ if "course_is_public" not in st.session_state:
 if "is_read_only" not in st.session_state:
     st.session_state.is_read_only = False
 
-query_params = st.query_params
-incoming_access_token = query_params.get("access_token")
-incoming_auth_error = query_params.get("auth_error")
-
-if incoming_auth_error:
-    st.error(incoming_auth_error)
-    st.query_params.clear()
-
-if incoming_access_token and st.session_state.access_token != incoming_access_token:
-    st.session_state.access_token = incoming_access_token
-
-    try:
-        me_res = requests.get(
-            f"{API_URL}/me",
-            headers={"Authorization": f"Bearer {incoming_access_token}"},
-            timeout=20,
-        )
-        if me_res.status_code == 200:
-            st.session_state.user = me_res.json()
-            st.query_params.clear()
-            st.rerun()
-        else:
-            st.error("Login failed while loading your profile.")
-    except Exception as e:
-        st.error(f"Error completing login: {e}")
-
 
 def auth_headers():
     token = st.session_state.get("access_token")
@@ -629,50 +572,53 @@ def is_finish_intent(text: str) -> bool:
 # --- Authentication UI ---
 def login():
     st.markdown(
-        "<h3 style='text-align: center; color: white; margin-bottom: 0.8rem;'>🔐 Sign in</h3>",
+        "<h3 style='text-align: center; color: white; margin-bottom: 0.8rem;'>🔐 Sign in or Register</h3>",
         unsafe_allow_html=True
     )
 
-    st.markdown(
-        f'<a class="google-login-link" href="{GOOGLE_LOGIN_URL}" target="_self">Continue with Google</a>',
-        unsafe_allow_html=True
-    )
+    auth_mode = st.radio("Mode", ["Login", "Register"], horizontal=True, label_visibility="collapsed")
 
-    st.markdown(
-        "<div class='google-note' style='margin-top:1rem; margin-bottom:0.8rem;'>or sign in with email</div>",
-        unsafe_allow_html=True
-    )
+    with st.form("auth_form", clear_on_submit=False):
+        email = st.text_input("Email", placeholder="name@example.com", key="auth_email")
+        password = st.text_input("Password", type="password", key="auth_password")
+        
+        full_name = None
+        if auth_mode == "Register":
+            full_name = st.text_input("Full Name", placeholder="Your Name", key="auth_name")
 
-    with st.form("magic_link_form", clear_on_submit=False):
-        email = st.text_input(
-            "Email",
-            placeholder="name@example.com",
-            key="magic_link_email"
-        )
-
-        submitted = st.form_submit_button("Send magic link ✉️", use_container_width=True)
+        submitted = st.form_submit_button(f"{auth_mode} 🚀", use_container_width=True)
 
         if submitted:
             email = email.strip()
-            if not email or "@" not in email:
-                st.warning("Please enter a valid email address.")
+            password = password.strip()
+            if not email or "@" not in email or not password:
+                st.warning("Please enter a valid email and password.")
+            elif auth_mode == "Register" and not full_name:
+                st.warning("Please enter your full name.")
             else:
                 try:
-                    res = requests.post(
-                        f"{API_URL}/auth/email/start",
-                        json={"email": email},
-                        timeout=20
-                    )
+                    if auth_mode == "Login":
+                        res = requests.post(f"{API_URL}/auth/login", json={"email": email, "password": password}, timeout=20)
+                    else:
+                        res = requests.post(f"{API_URL}/auth/register", json={"email": email, "password": password, "full_name": full_name}, timeout=20)
 
                     if res.status_code == 200:
-                        st.success("We sent you a sign-in link. Open it from your email on this browser.")
+                        data = res.json()
+                        st.session_state.access_token = data.get("access_token")
+                        
+                        # Load profile
+                        me_res = requests.get(f"{API_URL}/me", headers={"Authorization": f"Bearer {st.session_state.access_token}"}, timeout=20)
+                        if me_res.status_code == 200:
+                            st.session_state.user = me_res.json()
+                            st.rerun()
+                        else:
+                            st.error("Login failed while getting user profile.")
                     else:
                         try:
-                            detail = res.json().get("detail", "Failed to send magic link.")
+                            detail = res.json().get("detail", f"Failed to {auth_mode.lower()}.")
                         except Exception:
-                            detail = "Failed to send magic link."
+                            detail = f"Failed to {auth_mode.lower()}."
                         st.error(detail)
-
                 except Exception as e:
                     st.error(f"Error connecting to backend: {e}")
 
@@ -819,6 +765,7 @@ def chat_interface():
                         res = requests.post(
                             f"{API_URL}/chat/generate_course",
                             json={"prompt": prompt, "context": context},
+                            headers=auth_headers(),
                             timeout=60
                         )
                         if res.status_code == 200:
@@ -1005,10 +952,20 @@ def my_courses_view():
             for idx, project in enumerate(projects):
                 color = CARD_COLORS[idx % len(CARD_COLORS)]
                 visibility_label = "Public" if project.get("is_public") else "Private"
-                visibility_icon  = "🌐" if project.get("is_public") else "🔒"
+                visibility_icon = "🌐" if project.get("is_public") else "🔒"
                 date_str = (project.get("created_at") or "")[:10]
                 content_html = simple_md_to_html(project.get("content", ""))
                 title_esc = html.escape(project.get("title", ""))
+
+                digest_block = ""
+                if project.get("weekly_digest"):
+                    digest_block = f"""
+                        <div style="margin:0.75rem 0 1rem 0;padding:0.85rem 1rem;
+                                    background:#f8fafc;border-left:4px solid #1f78c1;border-radius:8px;
+                                    color:#111111;">
+                            <strong>Weekly digest:</strong> {html.escape(project["weekly_digest"])}
+                        </div>
+                    """
 
                 col_title, col_edit, col_share, col_del = st.columns([5, 1, 1, 1])
                 with col_title:
@@ -1025,14 +982,15 @@ def my_courses_view():
                                 <p style="color:#6b7280;font-size:0.85rem;margin:0 0 1rem 0;">
                                     Created on: {date_str}
                                 </p>
+                                {digest_block}
                                 {content_html}
                             </div>
                         </details>
                     """, unsafe_allow_html=True)
+
                 with col_edit:
                     if st.button("✏️ Edit", key=f"edit_my_{project['id']}", use_container_width=True):
                         raw_content = project.get("content", "")
-                        # Try to restore the original structured pages from the embedded JSON
                         restored_pages = None
                         m = re.search(r'<!-- COURSE_PAGES_JSON\n(.*?)\n-->', raw_content, re.DOTALL)
                         if m:
@@ -1043,7 +1001,6 @@ def my_courses_view():
                         if restored_pages:
                             st.session_state.course_pages = restored_pages
                         else:
-                            # Fallback for old courses saved before this feature
                             st.session_state.course_pages = [{
                                 "type": "content",
                                 "title": project.get("title", "My Course"),
@@ -1064,6 +1021,7 @@ def my_courses_view():
                         save_draft_state()
                         st.session_state._pending_page = "Create Course"
                         st.rerun()
+
                 with col_share:
                     if not project.get("is_public"):
                         if st.button("🌐 Share", key=f"share_my_{project['id']}", use_container_width=True, type="primary"):
@@ -1102,6 +1060,7 @@ def my_courses_view():
                                 st.rerun()
                             else:
                                 st.error("Failed to unshare course.")
+
                 with col_del:
                     if st.button("🗑️ Delete", key=f"del_my_{project['id']}", use_container_width=True, type="secondary"):
                         del_res = requests.delete(
@@ -1119,10 +1078,11 @@ def my_courses_view():
     except Exception as e:
         st.error(f"Connection error: {e}")
 
-
 def shared_courses_view():
     st.title("🌐 Shared Community Courses")
     st.markdown("Explore and learn from courses created by fellow educators and students.")
+
+
 
     try:
         res = requests.get(f"{API_URL}/courses/shared", timeout=30)
@@ -1130,6 +1090,7 @@ def shared_courses_view():
             projects = res.json()
             if not projects:
                 st.info("No shared courses yet.")
+
             for idx, project in enumerate(projects):
                 color = CARD_COLORS[idx % len(CARD_COLORS)]
                 owner_name = (
@@ -1141,6 +1102,17 @@ def shared_courses_view():
                 content_html = simple_md_to_html(project.get("content", ""))
                 title_esc = html.escape(project.get("title", ""))
                 owner_esc = html.escape(str(owner_name))
+
+                digest_block = ""
+                if project.get("weekly_digest"):
+                    digest_block = f"""
+                        <div style="margin:0.75rem 0 1rem 0;padding:0.85rem 1rem;
+                                    background:#f8fafc;border-left:4px solid #1f78c1;border-radius:8px;
+                                    color:#111111;">
+                            <strong>Weekly digest:</strong> {html.escape(project["weekly_digest"])}
+                        </div>
+                    """
+
                 col_title, col_start = st.columns([5, 1])
                 with col_title:
                     st.markdown(f"""
@@ -1156,14 +1128,15 @@ def shared_courses_view():
                                 <p style="color:#6b7280;font-size:0.85rem;margin:0 0 1rem 0;">
                                     Uploaded on: {date_str}
                                 </p>
+                                {digest_block}
                                 {content_html}
                             </div>
                         </details>
                     """, unsafe_allow_html=True)
+
                 with col_start:
                     if st.button("🚀 Start Course", key=f"start_shared_{project['id']}", use_container_width=True, type="primary"):
                         raw_content = project.get("content", "")
-                        # Try to restore the original structured pages from the embedded JSON
                         restored_pages = None
                         m = re.search(r'<!-- COURSE_PAGES_JSON\n(.*?)\n-->', raw_content, re.DOTALL)
                         if m:
@@ -1174,14 +1147,12 @@ def shared_courses_view():
                         if restored_pages:
                             st.session_state.course_pages = restored_pages
                         else:
-                            # Fallback for old courses saved before JSON embedding
                             st.session_state.course_pages = [{
                                 "type": "content",
                                 "title": project.get("title", "Shared Course"),
                                 "content": raw_content,
                             }]
                         st.session_state.current_page_index = 0
-                        # CRITICAL: leave this None so when the user continues, it saves as a NEW course owned by them!
                         st.session_state.last_saved_course_id = None
                         st.session_state.course_is_public = False
                         st.session_state.project_ready_to_save = False
@@ -1202,7 +1173,6 @@ def shared_courses_view():
             st.error("Failed to load courses.")
     except Exception as e:
         st.error(f"Could not connect to backend: {e}")
-
 
 def admin_panel():
     st.header("Admin Panel")
@@ -1297,11 +1267,57 @@ def render_logged_out_page():
         login()
 
 
+def ensure_guest_user():
+    if "user" not in st.session_state or st.session_state.user is None:
+        try:
+            # Try logging in guest
+            res = requests.post(f"{API_URL}/auth/login", json={"email": "rotem.pasharel1@gmail.com", "password": "guestpassword"}, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                st.session_state.access_token = data.get("access_token")
+                me_res = requests.get(f"{API_URL}/me", headers={"Authorization": f"Bearer {st.session_state.access_token}"}, timeout=5)
+                if me_res.status_code == 200:
+                    st.session_state.user = me_res.json()
+            else:
+                # Try registering guest
+                reg = requests.post(f"{API_URL}/auth/register", json={"email": "rotem.pasharel1@gmail.com", "password": "guestpassword", "full_name": "Rotem Pasharel"}, timeout=5)
+                if reg.status_code == 200:
+                    data = reg.json()
+                    st.session_state.access_token = data.get("access_token")
+                    me_res = requests.get(f"{API_URL}/me", headers={"Authorization": f"Bearer {st.session_state.access_token}"}, timeout=5)
+                    if me_res.status_code == 200:
+                        st.session_state.user = me_res.json()
+        except Exception:
+            pass
+
 # --- Main App ---
 def main():
+    ensure_guest_user()
+
+    # Default landing to Shared Courses for EX2 list viewing immediately
+    if "landing_done" not in st.session_state:
+        st.session_state.current_page = "Shared Courses"
+        st.session_state.landing_done = True
+
     if st.session_state.user is None:
-        render_logged_out_page()
+        st.error("Could not initialize the guest user. Make sure the backend is running.")
         return
+
+    if not st.session_state.draft_loaded:
+        st.session_state.draft_loaded = True
+        if not st.session_state.messages and load_draft_state():
+            st.rerun()
+
+    # Apply any pending programmatic navigation before the radio widget is instantiated
+    if st.session_state.get("_pending_page"):
+        st.session_state.current_page = st.session_state.pop("_pending_page")
+    ensure_guest_user()
+    
+    # Default landing to Shared Courses for EX2 list viewing immediately
+    if "landing_done" not in st.session_state:
+        st.session_state.current_page = "Shared Courses"
+        st.session_state.landing_done = True
+
 
     if not st.session_state.draft_loaded:
         st.session_state.draft_loaded = True
@@ -1316,14 +1332,6 @@ def main():
 
     st.sidebar.markdown("### 🧭 Navigation")
     st.sidebar.markdown(render_sidebar_user_card(), unsafe_allow_html=True)
-
-    if st.sidebar.button("Logout", use_container_width=True):
-        st.session_state.user = None
-        st.session_state.access_token = None
-        st.session_state.messages = []
-        st.session_state.current_course = []
-        st.session_state.project_ready_to_save = False
-        st.rerun()
 
     if st.sidebar.button("✨ New Course", use_container_width=True, type="primary"):
         # Clear the backend draft so a fresh session starts clean

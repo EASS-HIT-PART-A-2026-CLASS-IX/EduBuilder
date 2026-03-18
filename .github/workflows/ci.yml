@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: sqlite:///./app.db
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET_KEY: ci-secret-key
+      ADMIN_EMAIL: admin@example.com
+      GEMINI_API_KEY: ""
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Apply Alembic migrations
+        run: uv run python -m scripts.migrate
+
+      - name: Run API tests
+        run: uv run pytest tests/test_api.py -q
+
+      - name: Run worker tests
+        run: uv run pytest tests/test_worker.py -q
+
+      - name: Run Schemathesis contract tests
+        run: uv run pytest tests/test_openapi.py -q
