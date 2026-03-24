@@ -347,77 +347,12 @@ def apply_custom_css():
             transform: scale(1.03) !important;
             filter: brightness(1.15) !important;
         }
-/* ---------------- Sidebar collapse/open arrow fix ---------------- */
+/* ---------------- Hide sidebar toggle buttons (no open/close) ---------------- */
 
-/* Completely hide Streamlit native UI text, svgs, and spans inside the buttons */
-[data-testid="collapsedControl"] > div,
-[data-testid="collapsedControl"] > span,
-[data-testid="collapsedControl"] svg,
-[data-testid="collapsedControl"] i,
-[data-testid="stExpandSidebarButton"] > div,
-[data-testid="stExpandSidebarButton"] > span,
-[data-testid="stExpandSidebarButton"] svg,
-[data-testid="stExpandSidebarButton"] i,
-[data-testid="stSidebarCollapseButton"] > div,
-[data-testid="stSidebarCollapseButton"] > span,
-[data-testid="stSidebarCollapseButton"] svg,
-[data-testid="stSidebarCollapseButton"] i {
-    color: transparent !important;
-    font-size: 0 !important;
-    line-height: 0 !important;
-}
-
-/* Ensure the control container behaves as a button-like anchor */
 [data-testid="collapsedControl"],
 [data-testid="stExpandSidebarButton"],
 [data-testid="stSidebarCollapseButton"] {
-    position: fixed !important; /* Force position fixed so it always floats! */
-    top: 10px !important;       /* Space from top */
-    left: 10px !important;      /* Space from left */
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    width: 2.5rem !important;
-    height: 2.5rem !important;
-    background: transparent !important;
-    border: none !important;
-    z-index: 999999 !important; /* Force on top of everything! */
-}
-
-/* Force inject the right arrow on collapsed state */
-[data-testid="collapsedControl"]::before,
-[data-testid="stExpandSidebarButton"]::before {
-    content: "▶" !important;
-    position: absolute !important;
-    left: 50% !important;
-    top: 50% !important;
-    transform: translate(-50%, -50%) !important;
-    font-size: 26px !important;
-    font-weight: 900 !important;
-    color: #111111 !important;  /* Make the "open" arrow dark against the main background */
-    text-shadow: 0 1px 2px rgba(255,255,255,0.8) !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    pointer-events: none !important;
-}
-
-/* Force inject the left arrow correctly on expanded state */
-[data-testid="stSidebarCollapseButton"]::before,
-[data-testid="stSidebarCollapseButton"] button::before {
-    content: "◀" !important;
-    position: absolute !important;
-    left: 50% !important;
-    top: 50% !important;
-    transform: translate(-50%, -50%) !important;
-    font-size: 26px !important;
-    font-weight: 900 !important;
-    color: #111111 !important;
-    text-shadow: 0 1px 2px rgba(255,255,255,0.5) !important;
-    display: block !important;
-    visibility: visible !important;
-    pointer-events: none !important;
-    z-index: 999999 !important;
+    display: none !important;
 }
         /* ---------------- White Course Viewer Area ---------------- */
 
@@ -967,7 +902,7 @@ def my_courses_view():
                         </div>
                     """
 
-                col_title, col_edit, col_share, col_del = st.columns([5, 1, 1, 1])
+                col_title, col_edit, col_share, col_del = st.columns([4, 1.4, 1.4, 1.4])
                 with col_title:
                     st.markdown(f"""
                         <details style="margin-bottom:0.75rem;border-radius:12px;overflow:hidden;
