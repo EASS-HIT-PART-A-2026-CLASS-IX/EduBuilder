@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
     await app.state.redis.aclose()
 
 
-app = FastAPI(title="Educational AI Platform API", lifespan=lifespan)
+app = FastAPI(title="EduBuilder Course Builder API", lifespan=lifespan)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -239,8 +239,8 @@ def generate_course(payload: ChatRequest, user: User = Depends(get_current_user)
     try:
         system_instructions = (
             "You are an expert AI teacher that builds educational courses chapter by chapter. "
-            "Generate exactly 5 pages, then exactly 5 multiple-choice questions, then a short follow-up message. "
-            "All output must be in English and valid JSON matching the provided schema."
+            "Generate exactly 5 pages, then exactly 5 multiple-choice questions, then a short "
+            "follow-up message. All output must be in English and valid JSON matching the provided schema."
         )
 
         full_prompt = f"Context/Previous Lesson context: {context}\n\nUser Prompt: {prompt}"
@@ -419,15 +419,38 @@ def get_course(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+def get_or_create_guest_user(session: Session) -> User:
+    guest_email = os.environ.get("GUEST_EMAIL", "guest@edubuilder.local")
+    guest_name = os.environ.get("GUEST_FULL_NAME", "Guest User")
+    guest_password = os.environ.get("GUEST_PASSWORD", "guestpassword")
+
+    guest = session.exec(select(User).where(User.email == guest_email)).first()
+    if guest:
+        return guest
+
+    guest = User(
+        email=guest_email,
+        hashed_password=get_password_hash(guest_password),
+        full_name=guest_name,
+        role="user",
+    )
+    session.add(guest)
+    session.commit()
+    session.refresh(guest)
+    return guest
+
+
 @app.post("/courses")
 def save_course(
     project: CourseCreate,
-    user: User = Depends(get_current_user),
+    user: User | None = Depends(get_optional_user),
     session: Session = Depends(get_session),
 ):
     try:
+        owner = user or get_or_create_guest_user(session)
+
         new_course = Course(
-            owner_id=user.id,
+            owner_id=owner.id,
             title=project.title,
             content=project.content,
             is_public=project.is_public,
@@ -466,6 +489,7 @@ def update_course(
         session.rollback()
         raise HTTPException(status_code=500, detail=str(exc))
 
+
 @app.get("/admin/courses")
 def get_all_courses(
     admin_user: User = Depends(require_admin),
@@ -480,6 +504,7 @@ def get_all_courses(
         return enrich_courses_with_owner(courses, session)
     except Exception:
         return []
+
 
 @app.delete("/admin/courses/{course_id}")
 def delete_course(
