@@ -17,6 +17,7 @@ from .auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
     decode_access_token,
+    get_password_hash,
     optional_security,
     required_security,
     verify_password,
