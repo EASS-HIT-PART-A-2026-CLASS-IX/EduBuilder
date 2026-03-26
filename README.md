@@ -1,65 +1,63 @@
 # EduBuilder
 
-EduBuilder is a small, local-first **course builder and course catalog** built across EX1–EX3 around one consistent domain: users can register, create courses, browse shared courses, manage public or private visibility, and use AI-assisted flows to draft course content.
+EduBuilder is a small, local-first **course builder and course catalog** built across **EX1–EX3** around one consistent domain: **courses**.
 
-The final project combines a FastAPI backend, SQLite persistence through SQLModel and Alembic, a Streamlit interface, Redis, and an async worker. Everything is designed to run locally on a single laptop.
+The repository intentionally preserves:
+- a focused **EX1 backend**,
+- a lightweight **EX2 frontend**,
+- and the richer **EX3 full-stack version**.
 
-## Where to find each exercise
+This makes the project easy to grade exercise-by-exercise while still showing the final integrated product.
 
-### EX1 – Backend foundation submission
-Use these files for the EX1 grading scope:
+## Grader quick map
+
+If you are grading by exercise, use these files:
+
+### EX1 – FastAPI Foundations (Backend)
 - `backend/main_ex1.py`
 - `tests/test_ex1_api.py`
 - `docs/EX1-notes.md`
 
-This is the minimal FastAPI CRUD backend for the core `Course` resource:
-- in-memory storage,
-- Pydantic validation,
-- CRUD endpoints,
-- pytest coverage for the happy-path CRUD flow,
-- no authentication.
+What this EX1 version includes:
+- FastAPI backend
+- one core resource: `Course`
+- CRUD endpoints
+- Pydantic models
+- simple in-memory storage
+- pytest coverage for the happy-path CRUD flow
+- no authentication
 
-### EX2 – Friendly interface submission
-Use these files for the EX2 grading scope:
+### EX2 – Friendly Interface (Frontend connected to Backend)
 - `frontend/app_ex2.py`
+- `backend/main_ex1.py` for the cleanest EX2 demo
 - `docs/EX2-notes.md`
 
-This is the lightweight Streamlit interface that reuses the EX1 backend shape:
-- list existing courses immediately,
-- add a new course in one screen,
-- no login or security prompts in the UI,
-- one small extra: visible course count and CSV export.
+What this EX2 version includes:
+- lightweight Streamlit interface
+- lists existing courses immediately
+- allows adding a new course in one screen
+- no login or security prompts in the UI
+- small extra: visible course count and CSV export
 
-### EX3 – Full-stack microservices submission
-Use these files for the EX3 grading scope:
+### EX3 – Full-Stack Microservices Final Project
 - `backend/main.py`
 - `frontend/app.py`
+- `backend/database.py`
+- `backend/models.py`
+- `compose.yaml`
 - `scripts/refresh.py`
-- `scripts/capture_trace_excerpt.py`
 - `docs/EX3-notes.md`
 - `docs/runbooks/compose.md`
-- `compose.yaml`
-- `tests/test_api.py`
-- `tests/test_worker.py`
-- `tests/test_openapi.py`
+- `.github/workflows/ci.yml`
 
-This is the richer integrated system:
-- SQLite persistence via SQLModel and Alembic,
-- Redis-backed rate limiting and worker idempotency,
-- async worker for weekly digest generation,
-- Docker Compose orchestration for API + frontend + Redis + worker,
-- security baseline with hashed passwords, JWT auth, and role checks,
-- GitHub Actions CI that runs migrations, pytest, and Schemathesis contract tests.
-
-## Main features
-- **FastAPI backend** with local SQLite storage.
-- **Alembic migrations** for reproducible database setup.
-- **JWT authentication** for creating, editing, deleting, and draft-management flows.
-- **Role-aware authorization** for admin-only routes.
-- **Streamlit UI** for browsing shared courses and managing personal course content.
-- **Redis rate limiting** with standard response headers.
-- **Async worker** with bounded concurrency, retries, and Redis-backed idempotency.
-- **Schemathesis contract testing** against the OpenAPI schema.
+What this EX3 version includes:
+- SQLite persistence via SQLModel and Alembic
+- Streamlit frontend
+- Redis-backed rate limiting and worker idempotency
+- async worker for weekly digest generation
+- JWT authentication and role/scope checks
+- Docker Compose orchestration
+- pytest + Schemathesis-based testing
 
 ## Repository layout
 
@@ -69,7 +67,6 @@ EduBuilder/
 │  ├─ env.py
 │  ├─ script.py.mako
 │  └─ versions/
-│     └─ 20260317_0001_create_users_and_courses.py
 ├─ backend/
 │  ├─ __init__.py
 │  ├─ auth.py
@@ -77,6 +74,13 @@ EduBuilder/
 │  ├─ main.py
 │  ├─ main_ex1.py
 │  └─ models.py
+├─ docs/
+│  ├─ EX1-notes.md
+│  ├─ EX2-notes.md
+│  ├─ EX3-notes.md
+│  ├─ submission-status.md
+│  └─ runbooks/
+│     └─ compose.md
 ├─ frontend/
 │  ├─ app.py
 │  └─ app_ex2.py
@@ -92,15 +96,11 @@ EduBuilder/
 │  ├─ test_ex1_api.py
 │  ├─ test_openapi.py
 │  └─ test_worker.py
-├─ docs/
-│  ├─ EX1-notes.md
-│  ├─ EX2-notes.md
-│  ├─ EX3-notes.md
-│  └─ runbooks/
-│     └─ compose.md
 ├─ .github/
 │  └─ workflows/
 │     └─ ci.yml
+├─ .env.example
+├─ .gitignore
 ├─ alembic.ini
 ├─ compose.yaml
 ├─ pyproject.toml
@@ -109,115 +109,88 @@ EduBuilder/
 └─ README.md
 ```
 
-## Core API endpoints
+## Why the repository contains both simple and rich versions
 
-### Public
-- `GET /health`
-- `GET /courses`
-- `GET /courses/shared`
-- `GET /courses/{course_id}` for public courses
-- `POST /auth/register`
-- `POST /auth/login`
+The final EX3 application is naturally richer than EX1 and EX2. To keep grading clean and aligned with the assignment scope, the repository also preserves:
+- a dedicated **EX1 backend** in `backend/main_ex1.py`, and
+- a dedicated **EX2 frontend** in `frontend/app_ex2.py`.
 
-### Authenticated user
-- `GET /me`
-- `GET /courses/my`
-- `PUT /courses/{course_id}`
-- `DELETE /courses/{course_id}`
-- `POST /chat/generate_course`
-- `POST /chat/draft`
-- `GET /chat/draft`
-- `DELETE /chat/draft`
+So while the final product includes authentication, Redis, worker flows, and AI-assisted features, the earlier exercises can still be demonstrated in their intended minimal form.
 
-### Public-or-guest create flow
-- `POST /courses`
+## Domain continuity across EX1–EX3
 
-### Admin
-- `GET /admin/only`
-- `GET /admin/courses`
-- `DELETE /admin/courses/{course_id}`
+The same domain is reused throughout all exercises: **courses / course catalog / course builder**.
 
-## Prerequisites
-- Python 3.11+
-- `uv` for local development
-- Docker Desktop or Docker Engine with Compose
-- Redis is started automatically through Compose
-- Optional: Gemini API key for AI generation and digest features
+That means:
+- EX1 establishes the core backend resource (`Course`),
+- EX2 adds a lightweight interface for that same resource,
+- EX3 extends the same product into a local multi-service system.
 
-## Environment variables
-Copy `.env.example` to `.env` for local development, but **do not commit it**.
+## Local setup
 
-Example:
+### Create the environment
 
-```env
-DATABASE_URL=sqlite:///./app.db
-REDIS_URL=redis://localhost:6379/0
-JWT_SECRET_KEY=change-me-for-local-dev
-ADMIN_EMAIL=admin@example.com
-GEMINI_API_KEY=
-API_URL=http://127.0.0.1:8000
-WORKER_MAX_CONCURRENCY=3
-WORKER_MAX_RETRIES=3
-WORKER_RETRY_DELAY_SECONDS=2
-```
-
-Notes:
-- `GEMINI_API_KEY` is optional. Without it, AI-related flows fall back to non-LLM behavior where supported.
-- `JWT_SECRET_KEY` should be rotated if shared accidentally.
-- Do not commit `.env`, `app.db`, or virtual environment folders.
-
-## Local development with uv
-
-### 1. Create the environment
 ```bash
 uv venv
 uv sync
 ```
 
-### 2. Apply database migrations
+## How to run EX1
+
 ```bash
-uv run python -m scripts.migrate
+uv run uvicorn backend.main_ex1:app --reload
 ```
 
-### 3. Run the backend
-```bash
-uv run uvicorn backend.main:app --reload
-```
-
-Backend URLs:
+EX1 URLs:
 - API: `http://127.0.0.1:8000`
 - Swagger UI: `http://127.0.0.1:8000/docs`
 
-### 4. Run the frontend in a second terminal
-```bash
-uv run streamlit run frontend/app.py
-```
+Run the EX1 tests:
 
-Frontend URL:
-- `http://127.0.0.1:8501`
-
-### 5. Seed sample data (optional)
 ```bash
-uv run python scripts/seed.py
-```
-
-## EX1 quick run
-```bash
-uv venv
-uv sync
-uv run uvicorn backend.main_ex1:app --reload
 uv run pytest tests/test_ex1_api.py
 ```
 
-## EX2 quick run
+## How to run EX2
+
+Start the EX1 API first, then launch the lightweight frontend:
+
 ```bash
-uv venv
-uv sync
 uv run uvicorn backend.main_ex1:app --reload
 uv run streamlit run frontend/app_ex2.py
 ```
 
-## Run the full stack with Docker Compose
+EX2 URLs:
+- API: `http://127.0.0.1:8000`
+- Streamlit: `http://127.0.0.1:8501`
+
+## How to run EX3 locally with uv
+
+Apply migrations:
+
+```bash
+uv run python -m scripts.migrate
+```
+
+Run the backend:
+
+```bash
+uv run uvicorn backend.main:app --reload
+```
+
+Run the frontend in a second terminal:
+
+```bash
+uv run streamlit run frontend/app.py
+```
+
+Optional seed data:
+
+```bash
+uv run python scripts/seed.py
+```
+
+## How to run EX3 with Docker Compose
 
 ```bash
 docker compose up --build
@@ -232,106 +205,98 @@ Services:
 The API and worker both apply Alembic migrations before starting.
 
 To stop everything:
+
 ```bash
 docker compose down
 ```
 
-To remove volumes and local container state:
-```bash
-docker compose down -v
-```
+## EX3 required pieces covered
+
+The EX3 implementation includes:
+- one Git repository for the whole project,
+- FastAPI backend,
+- SQLite/SQLModel persistence,
+- Streamlit user-facing interface,
+- Redis service,
+- async worker service,
+- `compose.yaml`,
+- Compose runbook in `docs/runbooks/compose.md`,
+- async refresh logic in `scripts/refresh.py`,
+- worker tests using `pytest.mark.anyio`,
+- JWT-protected routes and role checks,
+- tests for expired tokens and missing scope,
+- a bounded-scope enhancement: weekly digest generation,
+- a local demo script: `bash scripts/demo.sh`,
+- CI running migrations, pytest, and Schemathesis contract tests.
 
 ## Tests
 
-Run all tests locally:
+Run all tests:
 
 ```bash
 uv run pytest
 ```
 
 Run only EX1 tests:
+
 ```bash
 uv run pytest tests/test_ex1_api.py
 ```
 
-Run only API tests:
+Run only EX3 API tests:
+
 ```bash
 uv run pytest tests/test_api.py
 ```
 
-Run the OpenAPI contract test:
-```bash
-uv run pytest tests/test_openapi.py
-```
+Run only worker tests:
 
-Run the worker tests:
 ```bash
 uv run pytest tests/test_worker.py
 ```
 
-## CI
-GitHub Actions CI is defined in `.github/workflows/ci.yml`.
+Run only contract tests:
 
-The pipeline:
-1. installs Python and `uv`,
-2. installs dependencies with `uv sync`,
-3. applies Alembic migrations,
-4. runs API tests,
-5. runs worker tests,
-6. runs Schemathesis contract tests.
-
-This gives a concrete CI answer for how to run Schemathesis and pytest in CI.
+```bash
+uv run pytest tests/test_openapi.py
+```
 
 ## Demo flow for graders
+
 A simple local demo script is included:
 
 ```bash
 bash scripts/demo.sh
 ```
 
-Suggested grading flow:
+Suggested grading flow for EX3:
 1. Start the stack.
-2. Open `/docs` for the API and `/health` for readiness.
+2. Open `/health` and `/docs`.
 3. Open the Streamlit frontend.
 4. Browse shared courses anonymously.
 5. Register a user and create a private course.
 6. Share that course and verify that it appears in the public catalog.
-7. Check admin-only route behavior.
-8. Inspect Redis-backed rate limiting, worker idempotency, and the trace excerpt captured in `docs/EX3-notes.md`.
+7. Check an admin-only route.
+8. Inspect worker behavior and Redis-backed processing.
 
-## Security baseline
+## Security baseline (EX3)
+
 - Passwords are hashed with `passlib`.
 - Access is controlled with Bearer JWTs.
-- Creating, editing, deleting, and draft management require authentication.
-- Role checks are enforced on admin-only endpoints.
-- Expired token and missing-scope scenarios are covered by tests.
+- Protected create/edit/delete flows require authentication.
+- Role/scope checks are enforced on admin-only endpoints.
+- Expired-token and missing-scope scenarios are covered by tests.
 - Sensitive values belong in `.env`, not in source control.
 
 ## Persistence and reproducibility
+
 - Persistence is local SQLite through SQLModel.
-- Schema setup is reproducible through **Alembic migrations**.
-- Use `scripts/seed.py` for reproducible starter data.
-- Do **not** commit `app.db` or any other SQLite artifacts.
-- Do **not** commit `.env`, `venv/`, `.venv/`, `.pytest_cache/`, or `.hypothesis/`.
-
-## Enhancement implemented for EX3
-The chosen enhancement is a **weekly digest / recommendation summary** for courses. A background worker scans public courses, generates a short digest, and avoids repeated work through Redis-backed idempotency keys.
-
-This keeps the product useful without expanding the scope into a large distributed system.
-
-## Redis trace excerpt workflow
-A helper script is included to refresh the checked-in **Redis trace excerpt** in `docs/EX3-notes.md` after a local Compose run:
-
-```bash
-uv run python scripts/capture_trace_excerpt.py
-```
-
-Run it after `docker compose up` so the notes file contains a real local Redis monitor excerpt showing:
-- rate-limit key activity,
-- request-driven Redis commands,
-- worker idempotency key activity.
+- Schema setup is reproducible through Alembic migrations.
+- `scripts/seed.py` provides reproducible starter data.
+- SQLite artifacts are not meant to be committed.
 
 ## AI assistance
+
 AI tools were used as pair-programming aids for:
 - refining the FastAPI route structure,
 - improving test coverage,
@@ -339,20 +304,23 @@ AI tools were used as pair-programming aids for:
 - clarifying Docker Compose orchestration,
 - validating that the final local workflow matched the assignment brief.
 
-All generated suggestions were manually reviewed, edited, and verified locally by running the application and the automated tests.
+All generated suggestions were manually reviewed, edited, and verified locally.
 
-## Submission checklist
-Before submission, make sure to:
-- remove `.env` from the repository,
-- remove `app.db` and any other SQLite artifacts from the repository,
-- remove `.venv/`, `.pytest_cache/`, and `.hypothesis/` from the repository or ZIP,
-- run the tests locally and verify the current output,
-- run `uv run python scripts/capture_trace_excerpt.py` after the stack is up,
-- commit all required files,
-- push the final branch to the correct GitHub repository.
+## Submission hygiene
 
-## Important note
-The following items are external to the codebase and must still be confirmed manually:
-- AWS Academy prerequisite completion,
-- whether a bonus screen capture was recorded,
-- whether the correct GitHub Classroom repository and required tags were used.
+Before submission, verify that the repository or ZIP does **not** include:
+- `.env`
+- `.venv/`
+- `venv/`
+- `.pytest_cache/`
+- `.hypothesis/`
+- `app.db`
+- other SQLite artifacts
+
+## Manual checks outside the codebase
+
+These items cannot be proven from code alone and must still be confirmed manually:
+- AWS Academy prerequisite completion
+- whether a bonus screen capture was recorded
+- whether the correct GitHub Classroom repository was used
+- whether required Git tags were created
