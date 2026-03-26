@@ -418,39 +418,15 @@ def get_course(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-
-def get_or_create_guest_user(session: Session) -> User:
-    guest_email = os.environ.get("GUEST_EMAIL", "guest@edubuilder.local")
-    guest_name = os.environ.get("GUEST_FULL_NAME", "Guest User")
-    guest_password = os.environ.get("GUEST_PASSWORD", "guestpassword")
-
-    guest = session.exec(select(User).where(User.email == guest_email)).first()
-    if guest:
-        return guest
-
-    guest = User(
-        email=guest_email,
-        hashed_password=get_password_hash(guest_password),
-        full_name=guest_name,
-        role="user",
-    )
-    session.add(guest)
-    session.commit()
-    session.refresh(guest)
-    return guest
-
-
 @app.post("/courses")
 def save_course(
     project: CourseCreate,
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
     try:
-        owner = user or get_or_create_guest_user(session)
-
         new_course = Course(
-            owner_id=owner.id,
+            owner_id=user.id,
             title=project.title,
             content=project.content,
             is_public=project.is_public,
@@ -462,7 +438,6 @@ def save_course(
     except Exception as exc:
         session.rollback()
         raise HTTPException(status_code=500, detail=str(exc))
-
 
 @app.put("/courses/{course_id}")
 def update_course(

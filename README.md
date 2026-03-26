@@ -4,26 +4,51 @@ EduBuilder is a small, local-first **course builder and course catalog** built a
 
 The final project combines a FastAPI backend, SQLite persistence through SQLModel and Alembic, a Streamlit interface, Redis, and an async worker. Everything is designed to run locally on a single laptop.
 
-## What this project covers
+## Where to find each exercise
 
-### EX1 – Backend foundation
-- FastAPI service for the core `Course` resource.
-- CRUD endpoints for creating, listing, updating, and deleting courses.
-- Pydantic request and response models.
-- Pytest coverage for authentication, protected routes, CRUD, token expiry, and scope checks.
+### EX1 – Backend foundation submission
+Use these files for the EX1 grading scope:
+- `backend/main_ex1.py`
+- `tests/test_ex1_api.py`
+- `docs/EX1-notes.md`
 
-### EX2 – Friendly interface
-- Streamlit frontend that talks to the backend.
-- Visitors can browse shared courses immediately.
-- The final repository keeps that fast public browsing flow, while the completed EX3 version adds authentication for create/edit/delete actions.
-- Small extra feature: AI-assisted course drafting and course visibility management.
+This is the minimal FastAPI CRUD backend for the core `Course` resource:
+- in-memory storage,
+- Pydantic validation,
+- CRUD endpoints,
+- pytest coverage for the happy-path CRUD flow,
+- no authentication.
 
-### EX3 – Full-stack microservices
-- SQLite persistence via SQLModel with **Alembic migrations**.
-- Redis-backed rate limiting and worker idempotency.
-- Async worker for weekly digest generation and recommendation summaries.
-- Docker Compose orchestration for API + frontend + Redis + worker.
-- Security baseline with hashed passwords, JWT auth, and role/scope checks.
+### EX2 – Friendly interface submission
+Use these files for the EX2 grading scope:
+- `frontend/app_ex2.py`
+- `docs/EX2-notes.md`
+
+This is the lightweight Streamlit interface that reuses the EX1 backend shape:
+- list existing courses immediately,
+- add a new course in one screen,
+- no login or security prompts in the UI,
+- one small extra: visible course count and CSV export.
+
+### EX3 – Full-stack microservices submission
+Use these files for the EX3 grading scope:
+- `backend/main.py`
+- `frontend/app.py`
+- `scripts/refresh.py`
+- `scripts/capture_trace_excerpt.py`
+- `docs/EX3-notes.md`
+- `docs/runbooks/compose.md`
+- `compose.yaml`
+- `tests/test_api.py`
+- `tests/test_worker.py`
+- `tests/test_openapi.py`
+
+This is the richer integrated system:
+- SQLite persistence via SQLModel and Alembic,
+- Redis-backed rate limiting and worker idempotency,
+- async worker for weekly digest generation,
+- Docker Compose orchestration for API + frontend + Redis + worker,
+- security baseline with hashed passwords, JWT auth, and role checks,
 - GitHub Actions CI that runs migrations, pytest, and Schemathesis contract tests.
 
 ## Main features
@@ -50,9 +75,11 @@ EduBuilder/
 │  ├─ auth.py
 │  ├─ database.py
 │  ├─ main.py
+│  ├─ main_ex1.py
 │  └─ models.py
 ├─ frontend/
-│  └─ app.py
+│  ├─ app.py
+│  └─ app_ex2.py
 ├─ scripts/
 │  ├─ capture_trace_excerpt.py
 │  ├─ demo.sh
@@ -62,9 +89,12 @@ EduBuilder/
 ├─ tests/
 │  ├─ conftest.py
 │  ├─ test_api.py
+│  ├─ test_ex1_api.py
 │  ├─ test_openapi.py
 │  └─ test_worker.py
 ├─ docs/
+│  ├─ EX1-notes.md
+│  ├─ EX2-notes.md
 │  ├─ EX3-notes.md
 │  └─ runbooks/
 │     └─ compose.md
@@ -92,13 +122,15 @@ EduBuilder/
 ### Authenticated user
 - `GET /me`
 - `GET /courses/my`
-- `POST /courses`
 - `PUT /courses/{course_id}`
 - `DELETE /courses/{course_id}`
 - `POST /chat/generate_course`
 - `POST /chat/draft`
 - `GET /chat/draft`
 - `DELETE /chat/draft`
+
+### Public-or-guest create flow
+- `POST /courses`
 
 ### Admin
 - `GET /admin/only`
@@ -169,6 +201,22 @@ Frontend URL:
 uv run python scripts/seed.py
 ```
 
+## EX1 quick run
+```bash
+uv venv
+uv sync
+uv run uvicorn backend.main_ex1:app --reload
+uv run pytest tests/test_ex1_api.py
+```
+
+## EX2 quick run
+```bash
+uv venv
+uv sync
+uv run uvicorn backend.main_ex1:app --reload
+uv run streamlit run frontend/app_ex2.py
+```
+
 ## Run the full stack with Docker Compose
 
 ```bash
@@ -201,20 +249,22 @@ Run all tests locally:
 uv run pytest
 ```
 
-Run only API tests:
+Run only EX1 tests:
+```bash
+uv run pytest tests/test_ex1_api.py
+```
 
+Run only API tests:
 ```bash
 uv run pytest tests/test_api.py
 ```
 
 Run the OpenAPI contract test:
-
 ```bash
 uv run pytest tests/test_openapi.py
 ```
 
 Run the worker tests:
-
 ```bash
 uv run pytest tests/test_worker.py
 ```
@@ -230,7 +280,7 @@ The pipeline:
 5. runs worker tests,
 6. runs Schemathesis contract tests.
 
-This gives a concrete CI answer for “how to run Schemathesis/pytest in CI”.
+This gives a concrete CI answer for how to run Schemathesis and pytest in CI.
 
 ## Demo flow for graders
 A simple local demo script is included:
@@ -247,13 +297,13 @@ Suggested grading flow:
 5. Register a user and create a private course.
 6. Share that course and verify that it appears in the public catalog.
 7. Check admin-only route behavior.
-8. Inspect worker logs and Redis-backed processing.
+8. Inspect Redis-backed rate limiting, worker idempotency, and the trace excerpt captured in `docs/EX3-notes.md`.
 
 ## Security baseline
 - Passwords are hashed with `passlib`.
 - Access is controlled with Bearer JWTs.
 - Creating, editing, deleting, and draft management require authentication.
-- Role/scope checks are enforced on admin-only endpoints.
+- Role checks are enforced on admin-only endpoints.
 - Expired token and missing-scope scenarios are covered by tests.
 - Sensitive values belong in `.env`, not in source control.
 
@@ -269,14 +319,17 @@ The chosen enhancement is a **weekly digest / recommendation summary** for cours
 
 This keeps the product useful without expanding the scope into a large distributed system.
 
-## Local service log excerpt workflow
-A helper script is included to refresh the checked-in **service log excerpt** in `docs/EX3-notes.md` after a local Compose run:
+## Redis trace excerpt workflow
+A helper script is included to refresh the checked-in **Redis trace excerpt** in `docs/EX3-notes.md` after a local Compose run:
 
 ```bash
-python scripts/capture_trace_excerpt.py
+uv run python scripts/capture_trace_excerpt.py
 ```
 
-Run it after `docker compose up` so the notes file contains a real local excerpt from your machine.
+Run it after `docker compose up` so the notes file contains a real local Redis monitor excerpt showing:
+- rate-limit key activity,
+- request-driven Redis commands,
+- worker idempotency key activity.
 
 ## AI assistance
 AI tools were used as pair-programming aids for:
@@ -294,7 +347,7 @@ Before submission, make sure to:
 - remove `app.db` and any other SQLite artifacts from the repository,
 - remove `.venv/`, `.pytest_cache/`, and `.hypothesis/` from the repository or ZIP,
 - run the tests locally and verify the current output,
-- run `python scripts/capture_trace_excerpt.py` after the stack is up,
+- run `uv run python scripts/capture_trace_excerpt.py` after the stack is up,
 - commit all required files,
 - push the final branch to the correct GitHub repository.
 
