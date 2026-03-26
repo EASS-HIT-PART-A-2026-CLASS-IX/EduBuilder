@@ -17,7 +17,6 @@ from .auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
     decode_access_token,
-    get_password_hash,
     optional_security,
     required_security,
     verify_password,
@@ -419,33 +418,15 @@ def get_course(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-def get_or_create_guest_user(session: Session) -> User:
-    guest = session.exec(select(User).where(User.email == "rotem.pasharel1@gmail.com")).first()
-    if guest:
-        return guest
-
-    guest = User(
-        email="rotem.pasharel1@gmail.com",
-        hashed_password=get_password_hash("guestpassword"),
-        full_name="Rotem Pasharel",
-        role="user",
-    )
-    session.add(guest)
-    session.commit()
-    session.refresh(guest)
-    return guest
-
-
 @app.post("/courses")
 def save_course(
     project: CourseCreate,
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
     try:
-        owner = user or get_or_create_guest_user(session)
         new_course = Course(
-            owner_id=owner.id,
+            owner_id=user.id,
             title=project.title,
             content=project.content,
             is_public=project.is_public,

@@ -15,7 +15,7 @@ The final project combines a FastAPI backend, SQLite persistence through SQLMode
 ### EX2 – Friendly interface
 - Streamlit frontend that talks to the backend.
 - Visitors can browse shared courses immediately.
-- Signed-in users can create, edit, save, and share their own courses.
+- The final repository keeps that fast public browsing flow, while the completed EX3 version adds authentication for create/edit/delete actions.
 - Small extra feature: AI-assisted course drafting and course visibility management.
 
 ### EX3 – Full-stack microservices
@@ -270,7 +270,7 @@ The chosen enhancement is a **weekly digest / recommendation summary** for cours
 This keeps the product useful without expanding the scope into a large distributed system.
 
 ## Local service log excerpt workflow
-A helper script is included to inject a real local **service log excerpt** into `docs/EX3-notes.md`:
+A helper script is included to refresh the checked-in **service log excerpt** in `docs/EX3-notes.md` after a local Compose run:
 
 ```bash
 python scripts/capture_trace_excerpt.py

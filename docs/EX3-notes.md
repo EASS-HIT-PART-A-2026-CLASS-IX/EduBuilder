@@ -180,7 +180,7 @@ This excerpt demonstrates:
 - worker execution,
 - and the background processing path that relies on Redis-backed coordination.
 
-If your instructor specifically requires a **Logfire trace** or a **Redis trace visualization** rather than service logs, replace the block below with that capture before final submission.
+The excerpt below is a local Compose run excerpt kept in the repository as evidence of migrations, health checks, and worker execution. Refresh it with `python scripts/capture_trace_excerpt.py` before final submission if you generate a newer local run.
 
 <!-- TRACE_EXCERPT_START -->
 

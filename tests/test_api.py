@@ -52,6 +52,16 @@ def test_protected_routes_without_token(client):
     res2 = client.get("/courses/my")
     assert res2.status_code == 401
 
+    res3 = client.post(
+        "/courses",
+        json={
+            "title": "Auth Required",
+            "content": "This should fail without a token",
+            "is_public": True,
+        },
+    )
+    assert res3.status_code == 401
+
 
 def test_me_with_token(client, user_token):
     res = client.get("/me", headers=auth_headers(user_token))
