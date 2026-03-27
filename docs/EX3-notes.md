@@ -179,7 +179,7 @@ The script:
 - triggers a few API requests,
 - creates one public demo course,
 - runs a one-off worker refresh to exercise Redis-backed idempotency,
-- injects the captured Redis activity into the block below.
+- validates that real monitor lines were captured before writing this file.
 
 Refresh the excerpt before submission:
 
@@ -187,20 +187,25 @@ Refresh the excerpt before submission:
 uv run python scripts/capture_trace_excerpt.py
 ```
 
-This gives a local trace artifact that matches the EX3 expectation more closely than generic service logs.
+Important:
+- do **not** submit the broken Docker-error excerpt that was previously checked in,
+- do **not** submit a placeholder as the final state,
+- only keep the generated block below after a successful local Compose run.
 
 <!-- TRACE_EXCERPT_START -->
 
 ```text
-# redis-monitor
-(no lines captured)
+Trace excerpt not refreshed yet.
 
-# worker-trigger
-(worker trigger failed; monitor may still show API Redis activity)
-unable to get image 'redis:7-alpine': failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct and if the daemon is running: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
+Run:
+uv run python scripts/capture_trace_excerpt.py
 
-# redis-monitor-stderr
-failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct and if the daemon is running: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
+Expected result:
+- Redis MONITOR lines appear here
+- worker-trigger output appears here
+- redis-monitor-stderr is empty or minimal
+
+Do not submit this placeholder block as the final EX3 artifact.
 ```
 
 <!-- TRACE_EXCERPT_END -->

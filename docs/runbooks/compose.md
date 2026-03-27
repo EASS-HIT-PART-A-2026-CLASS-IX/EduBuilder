@@ -138,17 +138,21 @@ uv run pytest tests/test_openapi.py
 Why this works in CI:
 - the Alembic migration step creates the SQLite schema reproducibly,
 - API tests validate auth, CRUD, role checks, and token-expiry behavior,
-- worker tests validate retries/idempotency behavior,
+- worker tests validate retries and idempotency behavior,
 - Schemathesis loads the ASGI app directly and validates public OpenAPI routes without needing a separately hosted server.
 
-## Capturing the local service log excerpt for EX3 notes
-After the stack runs locally, inject a real service log excerpt into `docs/EX3-notes.md`:
+## Capturing the Redis trace excerpt required for EX3 notes
+After the stack is healthy, inject a real Redis monitor excerpt into `docs/EX3-notes.md`:
 
 ```bash
-python scripts/capture_trace_excerpt.py
+uv run python scripts/capture_trace_excerpt.py
 ```
 
-If your rubric specifically asks for a Logfire trace or a Redis trace visualization, replace the generated block with that capture before final submission.
+Important:
+- the capture script now refuses to overwrite `docs/EX3-notes.md` if Docker is unavailable,
+- it also refuses to write when no real Redis MONITOR lines were captured,
+- keep the placeholder block only temporarily,
+- before submission, confirm that `docs/EX3-notes.md` contains a **real** local excerpt.
 
 ## Resetting local state
 If you want a clean local reset:
