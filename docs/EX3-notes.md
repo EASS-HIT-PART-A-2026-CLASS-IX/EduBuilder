@@ -192,8 +192,15 @@ This gives a local trace artifact that matches the EX3 expectation more closely 
 <!-- TRACE_EXCERPT_START -->
 
 ```text
-[Run `uv run python scripts/capture_trace_excerpt.py` after `docker compose up -d --build`
-to replace this placeholder with a real local Redis MONITOR excerpt.]
+# redis-monitor
+(no lines captured)
+
+# worker-trigger
+(worker trigger failed; monitor may still show API Redis activity)
+unable to get image 'redis:7-alpine': failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct and if the daemon is running: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
+
+# redis-monitor-stderr
+failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct and if the daemon is running: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
 ```
 
 <!-- TRACE_EXCERPT_END -->
