@@ -3,7 +3,7 @@ set -euo pipefail
 
 API_URL="${TRACE_API_URL:-http://localhost:8000}"
 
-echo "=== PoseAI Trainer EX3 Demo ==="
+echo "=== EduBuilder EX3 Demo ==="
 echo "1. Stopping any previous local stack..."
 docker compose down -v >/dev/null 2>&1 || true
 
@@ -29,7 +29,7 @@ uv run python scripts/seed.py
 echo "5. Triggering the worker..."
 docker compose run --rm worker python scripts/refresh.py
 
-echo "6. Refreshing the Redis trace excerpt in docs/EX3-notes.md..."
+echo "6. Refreshing the trace excerpt in docs/EX3-notes.md..."
 uv run python scripts/capture_trace_excerpt.py
 
 echo "7. Quick checks:"

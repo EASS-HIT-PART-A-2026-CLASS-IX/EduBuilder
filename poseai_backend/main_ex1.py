@@ -7,7 +7,7 @@ from typing import Dict
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-app = FastAPI(title="PoseAI Trainer EX1 API", version="1.0.0")
+app = FastAPI(title="EduBuilder EX1 API", version="1.0.0")
 
 
 class PlanCreate(BaseModel):

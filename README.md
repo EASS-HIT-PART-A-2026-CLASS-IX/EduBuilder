@@ -1,6 +1,6 @@
-# PoseAI Trainer — EX1 to EX3 Submission
+# EduBuilder — EX1 to EX3 Submission
 
-PoseAI Trainer is a small, local-first product built around one consistent domain: **squat coaching plans and community training notes**.
+EduBuilder is a small, local-first product built around one consistent domain: **learning plans**.
 
 The repository is organized so you can present the project as three incremental exercises:
 
@@ -8,7 +8,7 @@ The repository is organized so you can present the project as three incremental 
 - **EX2** — a lightweight Streamlit frontend that reuses the EX1 API as-is
 - **EX3** — a fuller local stack with SQLite/SQLModel persistence, JWT auth, Redis-backed rate limiting, a background worker, tests, Docker Compose, and runbooks
 
-> The older ML/video-experiment files in the repository can remain as non-grading extras.
+> Older experimental files can remain as non-grading extras.
 > For grading, use the files listed below.
 
 ---
@@ -43,8 +43,8 @@ What EX2 includes:
 
 - Streamlit interface
 - talks to the EX1 backend as-is
-- list existing plans immediately
-- add a new plan in one screen
+- lists existing plans immediately
+- allows adding a new plan in one screen
 - no authentication or security prompts
 - one small extra: summary metric + CSV export
 
@@ -80,19 +80,19 @@ What EX3 includes:
 - JWT authentication and admin role checks
 - automated tests including worker and OpenAPI checks
 - Docker Compose orchestration for API + frontend + Redis + worker
-- a small enhancement: weekly public-plan digest generation
+- a small enhancement: weekly learning-plan digest generation
 
 ---
 
 ## Domain model
 
-The core product resource is a **squat training plan**.
+The core product resource is a **learning plan**.
 
 A plan contains:
 
 - title
 - goal
-- coaching cues
+- cues
 - difficulty level
 - visibility (`is_public`)
 
@@ -105,210 +105,6 @@ This keeps the domain narrow and consistent through EX1–EX3.
 
 ---
 
-## Prerequisites
-
-- Python 3.11+
-- `uv`
-- Docker Desktop or Docker Engine with Compose for EX3
-- Redis (started automatically through Compose for EX3)
-
----
-
-## EX1 quick run
-
-```bash
-uv venv
-uv pip install -r requirements.txt
-uv run uvicorn poseai_backend.main_ex1:app --reload
-uv run pytest tests/test_ex1_api.py
-```
-
----
-
-## EX2 quick run
-
-Run the API first:
-
-```bash
-uv run uvicorn poseai_backend.main_ex1:app --reload
-```
-
-In a second terminal:
-
-```bash
-uv run streamlit run frontend/app_ex2.py
-```
-
----
-
-## EX3 local run
-
-Install dependencies:
-
-```bash
-uv venv
-uv pip install -r requirements.txt
-```
-
-Apply migrations:
-
-```bash
-uv run python -m scripts.migrate
-```
-
-Run the API locally:
-
-```bash
-uv run uvicorn poseai_backend.main:app --reload
-```
-
-Run the frontend locally in a second terminal:
-
-```bash
-uv run streamlit run frontend/app.py
-```
-
-Optional seed data:
-
-```bash
-uv run python scripts/seed.py
-```
-
----
-
-## EX3 Docker Compose run
-
-```bash
-docker compose up --build
-```
-
-Services:
-
-- API: `http://localhost:8000`
-- Frontend: `http://localhost:8501`
-- Redis: `localhost:6379`
-- Worker: background process inside the Compose stack
-
-Stop everything:
-
-```bash
-docker compose down
-```
-
----
-
-## Tests
-
-Run all tests:
-
-```bash
-uv run pytest
-```
-
-Run only EX1 tests:
-
-```bash
-uv run pytest tests/test_ex1_api.py
-```
-
-Run only EX3 API tests:
-
-```bash
-uv run pytest tests/test_api.py
-```
-
-Run only worker tests:
-
-```bash
-uv run pytest tests/test_worker.py
-```
-
-Run only OpenAPI contract tests:
-
-```bash
-uv run pytest tests/test_openapi.py
-```
-
----
-
-## Demo flow for graders
-
-A local demo script is included:
-
-```bash
-bash scripts/demo.sh
-```
-
-Suggested flow:
-
-1. Start the stack.
-2. Open `/health`.
-3. Open the Streamlit frontend.
-4. Browse public plans.
-5. Register a user and create a private plan.
-6. Mark the plan public and verify it appears in shared plans.
-7. Check admin-only route behavior.
-8. Trigger the weekly digest worker.
-9. Refresh the Redis trace excerpt in `docs/EX3-notes.md`.
-
----
-
-## Security baseline
-
-EX3 includes:
-
-- hashed passwords using `passlib`
-- JWT-based authentication
-- admin scope checks
-- tests for expired tokens
-- tests for missing scope
-
-Rotate the JWT secret by:
-
-1. changing `JWT_SECRET_KEY` in `.env`
-2. restarting the API
-3. logging in again for fresh tokens
-4. verifying old tokens are rejected
-
----
-
-## Persistence and reproducibility
-
-- SQLite is used locally
-- Alembic migrations create the schema reproducibly
-- `scripts/seed.py` provides sample data
-- do not commit `.db` files
-
----
-
 ## AI Assistance
 
-AI tools were used as pair-programming aids for:
-
-- shaping the repository structure around EX1–EX3
-- drafting the FastAPI and Streamlit skeletons
-- proposing test cases and worker structure
-- tightening the runbooks and README
-- checking alignment with the written assignment brief
-
-All generated suggestions should be reviewed locally, run with `pytest`, and verified manually before submission.
-
----
-
-## Submission hygiene
-
-Do not commit:
-
-- `.env`
-- `.venv/`
-- `app.db`
-- `.pytest_cache/`
-- `.hypothesis/`
-- generated output artifacts
-
-Before final submission, make sure to:
-
-- run the tests
-- run the local stack once
-- refresh the Redis trace excerpt in `docs/EX3-notes.md`
-- verify the correct GitHub Classroom repository is being used
+AI tools were used as pair-programming aids for structure, tests, and documentation. All outputs should be verified locally before submission.

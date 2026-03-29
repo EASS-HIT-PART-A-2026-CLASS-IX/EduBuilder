@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
             await result
 
 
-app = FastAPI(title="PoseAI Trainer API", lifespan=lifespan)
+app = FastAPI(title="EduBuilder API", lifespan=lifespan)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):

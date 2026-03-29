@@ -12,7 +12,7 @@ def seed() -> None:
             admin = User(
                 email="admin@example.com",
                 hashed_password=get_password_hash("adminpass123"),
-                full_name="Admin Coach",
+                full_name="Admin Teacher",
                 role="admin",
             )
             session.add(admin)
@@ -26,17 +26,17 @@ def seed() -> None:
         plans = [
             Plan(
                 owner_id=admin.id,
-                title="Beginner squat setup",
-                goal="Build a stable bodyweight squat pattern",
-                cues="Brace the core, keep the chest tall, push the floor away, and keep knees tracking over the toes.",
+                title="Python basics study plan",
+                goal="Review variables, loops, and functions",
+                cues="Start with short examples, practice every day, and summarize each topic in your own words.",
                 level="Beginner",
                 is_public=True,
             ),
             Plan(
                 owner_id=admin.id,
-                title="Tempo squat control",
-                goal="Improve control on the way down",
-                cues="Descend for 3 seconds, pause briefly at the bottom, and stand up with steady speed.",
+                title="Databases revision plan",
+                goal="Strengthen SQL and schema design",
+                cues="Practice SELECT, JOIN, and filtering queries, then design one small schema from scratch.",
                 level="Intermediate",
                 is_public=True,
             ),
