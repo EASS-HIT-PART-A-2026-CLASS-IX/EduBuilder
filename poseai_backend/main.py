@@ -112,6 +112,22 @@ def health_check():
     return {"status": "ok", "version": "1.0.0"}
 
 
+def get_or_create_guest_user(session: Session) -> User:
+    email = "rotem.pasharel1@gmail.com"
+    user = session.exec(select(User).where(User.email == email)).first()
+    if not user:
+        user = User(
+            email=email,
+            hashed_password=get_password_hash("guestpassword"),
+            full_name="Rotem Pasharel",
+            role="user",
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+    return user
+
+
 def get_current_user(
     security_scopes: SecurityScopes,
     token: HTTPAuthorizationCredentials = Depends(required_security),
