@@ -28,6 +28,13 @@ from .database import get_session, init_db
 from .models import EmailLoginRequest, EmailRegisterRequest, Plan, PlanCreate, PlanRead, User
 
 
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "rotem.pasharel1@gmail.com").strip().lower()
+
+
+def is_admin_email(email: str) -> bool:
+    return email.strip().lower() == ADMIN_EMAIL
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -141,16 +148,24 @@ def health_check():
 def get_or_create_guest_user(session: Session) -> User:
     email = "rotem.pasharel1@gmail.com"
     user = session.exec(select(User).where(User.email == email)).first()
+    expected_role = "admin" if is_admin_email(email) else "user"
+
     if not user:
         user = User(
             email=email,
             hashed_password=get_password_hash("guestpassword"),
             full_name="Rotem Pasharel",
-            role="user",
+            role=expected_role,
         )
         session.add(user)
         session.commit()
         session.refresh(user)
+    elif user.role != expected_role:
+        user.role = expected_role
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
     return user
 
 
@@ -414,7 +429,7 @@ def register(user_data: EmailRegisterRequest, session: Session = Depends(get_ses
         email=email,
         hashed_password=get_password_hash(user_data.password),
         full_name=user_data.full_name,
-        role="admin" if email == os.environ.get("ADMIN_EMAIL", "admin@example.com") else "user",
+        role="admin" if is_admin_email(email) else "user",
     )
     session.add(new_user)
     session.commit()
@@ -431,6 +446,13 @@ def login(user_data: EmailLoginRequest, session: Session = Depends(get_session))
 
     if not user or not verify_password(user_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
+
+    expected_role = "admin" if is_admin_email(email) else user.role
+    if user.role != expected_role:
+        user.role = expected_role
+        session.add(user)
+        session.commit()
+        session.refresh(user)
 
     access_token = build_token_for_user(user)
     return {"access_token": access_token, "token_type": "bearer"}
