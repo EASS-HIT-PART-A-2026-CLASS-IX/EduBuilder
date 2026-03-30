@@ -8,7 +8,7 @@ The repository is organized so you can present the project as three incremental 
 - **EX2** — a lightweight Streamlit frontend that reuses the EX1 API as-is
 - **EX3** — a fuller local stack with SQLite/SQLModel persistence, JWT auth, Redis-backed rate limiting, a background worker, tests, Docker Compose, and runbooks
 
-> Older experimental files can remain as non-grading extras.
+> Older experimental files can remain as non-grading extras.  
 > For grading, use the files listed below.
 
 ---
@@ -31,6 +31,9 @@ What EX1 includes:
 - Pydantic validation
 - pytest coverage using FastAPI `TestClient`
 - no authentication
+- local run instructions for the API and tests
+
+EX1 scope does **not** include authentication, JWT protection, role checks, token-expiry handling, or scope validation. Those capabilities are introduced in EX3 as part of the final multi-service project.
 
 ### EX2 – Friendly Interface
 Use these files for the EX2 grading scope:
@@ -107,4 +110,4 @@ This keeps the domain narrow and consistent through EX1–EX3.
 
 ## AI Assistance
 
-AI tools were used as pair-programming aids for structure, tests, and documentation. All outputs should be verified locally before submission.
+AI tools were used as pair-programming aids for structure, tests, and documentation. All outputs were reviewed and verified locally before submission.

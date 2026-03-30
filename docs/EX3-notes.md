@@ -67,7 +67,6 @@ The project includes `compose.yaml` with these services:
 ### 4.1 Health endpoint
 ```bash
 curl http://localhost:8000/health
-```
 
 ### 4.2 Rate-limit headers
 ```bash
