@@ -31,17 +31,42 @@ from .models import EmailLoginRequest, EmailRegisterRequest, Plan, PlanCreate, P
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    app.state.redis = Redis.from_url(
-        os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
-        decode_responses=True,
-    )
+
+    disable_redis = os.environ.get("DISABLE_REDIS", "0") == "1"
+    app.state.redis = None
+
+    if not disable_redis:
+        candidate = Redis.from_url(
+            os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+            decode_responses=True,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+        )
+        try:
+            await candidate.ping()
+            app.state.redis = candidate
+        except Exception:
+            try:
+                close_method = getattr(candidate, "aclose", None) or getattr(candidate, "close", None)
+                if close_method is not None:
+                    result = close_method()
+                    if hasattr(result, "__await__"):
+                        await result
+            except Exception:
+                pass
+            app.state.redis = None
+
     app.state.local_drafts: dict[str, dict[str, Any]] = {}
+
     yield
-    close_method = getattr(app.state.redis, "aclose", None) or getattr(app.state.redis, "close", None)
-    if close_method is not None:
-        result = close_method()
-        if hasattr(result, "__await__"):
-            await result
+
+    redis = getattr(app.state, "redis", None)
+    if redis is not None:
+        close_method = getattr(redis, "aclose", None) or getattr(redis, "close", None)
+        if close_method is not None:
+            result = close_method()
+            if hasattr(result, "__await__"):
+                await result
 
 
 app = FastAPI(title="EduBuilder API", lifespan=lifespan)
@@ -82,6 +107,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             response.headers["X-RateLimit-Remaining"] = str(remaining)
             return response
         except Exception:
+            request.app.state.redis = None
             return await call_next(request)
 
 
@@ -227,7 +253,7 @@ def plans_to_courses(plans: list[Plan], session: Session) -> list[dict[str, Any]
 
 
 def infer_course_title(content: str) -> str:
-    first_heading = re.search(r"^###\\s+(.+)$", content, flags=re.MULTILINE)
+    first_heading = re.search(r"^###\s+(.+)$", content, flags=re.MULTILINE)
     if first_heading:
         return first_heading.group(1).strip()[:200]
     first_line = next((line.strip() for line in content.splitlines() if line.strip()), "My Course")
@@ -239,10 +265,10 @@ def infer_topic(prompt: str) -> str:
     lowered = text.lower()
 
     patterns = [
-        r"create (?:an?|the)?\\s*(.+?)\\s+course(?: for me)?$",
-        r"build (?:an?|the)?\\s*(.+?)\\s+course(?: for me)?$",
-        r"make (?:an?|the)?\\s*(.+?)\\s+course(?: for me)?$",
-        r"(?:an?|the)?\\s*(.+?)\\s+course$",
+        r"create (?:an?|the)?\s*(.+?)\s+course(?: for me)?$",
+        r"build (?:an?|the)?\s*(.+?)\s+course(?: for me)?$",
+        r"make (?:an?|the)?\s*(.+?)\s+course(?: for me)?$",
+        r"(?:an?|the)?\s*(.+?)\s+course$",
     ]
     for pattern in patterns:
         match = re.search(pattern, lowered, flags=re.IGNORECASE)
@@ -266,39 +292,39 @@ def build_page(topic: str, chapter_number: int) -> dict[str, str]:
     if chapter_number == 1:
         title = f"{topic}: Foundations"
         content = (
-            f"Welcome to **{topic}**.\\n\\n"
+            f"Welcome to **{topic}**.\n\n"
             "In this opening chapter we build the basic vocabulary, the central questions in the field, "
-            "and the reason the topic matters in real life.\\n\\n"
-            "Key ideas:\\n"
-            "- Define the subject clearly\\n"
-            "- Identify the main goals of the field\\n"
+            "and the reason the topic matters in real life.\n\n"
+            "Key ideas:\n"
+            "- Define the subject clearly\n"
+            "- Identify the main goals of the field\n"
             "- Connect theory to daily examples"
         )
     elif chapter_number == 2:
         title = f"{topic}: Core Concepts"
         content = (
-            f"This chapter introduces the main concepts in **{topic}** and explains how they connect.\\n\\n"
-            "Focus points:\\n"
-            "- Core models and definitions\\n"
-            "- Typical examples learners should recognize\\n"
+            f"This chapter introduces the main concepts in **{topic}** and explains how they connect.\n\n"
+            "Focus points:\n"
+            "- Core models and definitions\n"
+            "- Typical examples learners should recognize\n"
             "- Common misunderstandings and how to avoid them"
         )
     elif chapter_number == 3:
         title = f"{topic}: Applications and Practice"
         content = (
-            f"Now we move from theory into practice in **{topic}**.\\n\\n"
-            "In this chapter learners should:\\n"
-            "- Apply concepts to realistic scenarios\\n"
-            "- Compare different approaches\\n"
+            f"Now we move from theory into practice in **{topic}**.\n\n"
+            "In this chapter learners should:\n"
+            "- Apply concepts to realistic scenarios\n"
+            "- Compare different approaches\n"
             "- Explain their reasoning in simple language"
         )
     else:
         title = f"{topic}: Chapter {chapter_number}"
         content = (
-            f"This chapter expands the learner's understanding of **{topic}** with a new angle.\\n\\n"
-            "Suggested structure:\\n"
-            "- Short concept recap\\n"
-            "- One deeper example\\n"
+            f"This chapter expands the learner's understanding of **{topic}** with a new angle.\n\n"
+            "Suggested structure:\n"
+            "- Short concept recap\n"
+            "- One deeper example\n"
             "- Reflection question or mini exercise"
         )
     return {"title": title, "content": content}
@@ -350,7 +376,7 @@ async def load_draft_for_user(user_id: str) -> dict[str, Any]:
             if raw:
                 return json.loads(raw)
         except Exception:
-            pass
+            app.state.redis = None
 
     return app.state.local_drafts.get(user_id, {})
 
@@ -363,7 +389,7 @@ async def save_draft_for_user(user_id: str, draft: dict[str, Any]) -> None:
         try:
             await redis.set(f"chat_draft:{user_id}", json.dumps(draft))
         except Exception:
-            pass
+            app.state.redis = None
 
 
 async def delete_draft_for_user(user_id: str) -> None:
@@ -374,7 +400,7 @@ async def delete_draft_for_user(user_id: str) -> None:
         try:
             await redis.delete(f"chat_draft:{user_id}")
         except Exception:
-            pass
+            app.state.redis = None
 
 
 @app.post("/auth/register")

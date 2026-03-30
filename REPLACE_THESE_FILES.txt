@@ -1,0 +1,17 @@
+Replace these files in your repository:
+- poseai_backend/main.py
+- scripts/capture_trace_excerpt.py
+- docs/EX3-notes.md
+- docs/runbooks/compose.md
+
+Optional:
+- README_NO_DOCKER_UPDATE.txt (just for your reference; you do not need to keep this exact filename in the repo)
+
+Recommended no-Docker run:
+PowerShell:
+$env:DISABLE_REDIS="1"
+uv run python -m scripts.migrate
+uv run uvicorn poseai_backend.main:app --host 127.0.0.1 --port 8000 --reload
+
+Second terminal:
+uv run streamlit run frontend/app.py

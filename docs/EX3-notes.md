@@ -8,7 +8,7 @@ It keeps one narrow domain across the course exercises and combines:
 - a FastAPI backend,
 - SQLite persistence through SQLModel,
 - a Streamlit frontend,
-- Redis for rate limiting and worker coordination,
+- optional Redis support for rate limiting and worker coordination,
 - and an async background worker for digest generation.
 
 The project is intentionally scoped to run on one laptop with local tools only.
@@ -27,7 +27,7 @@ Responsibilities:
 - expose authenticated plan-management routes,
 - expose admin-only routes,
 - return health information,
-- include Redis-backed rate-limit headers.
+- include rate-limit headers when Redis is available.
 
 ### 2.2 Persistence layer
 
@@ -50,14 +50,7 @@ Responsibilities:
 - create, edit, and delete personal plans through the backend,
 - keep the user flow simple enough for a short demo.
 
-### 2.4 Redis service
-
-Redis is used for two focused EX3 concerns:
-
-- API rate limiting,
-- worker idempotency / duplicate-work prevention.
-
-### 2.5 Worker service
+### 2.4 Worker service
 
 Implemented in `scripts/refresh.py`.
 
@@ -66,7 +59,7 @@ Responsibilities:
 - scan public plans,
 - generate a weekly digest,
 - retry transient failures,
-- prevent duplicate work with Redis-backed idempotency keys,
+- prevent duplicate work with Redis-backed idempotency keys when Redis is enabled,
 - keep concurrency bounded.
 
 ## 3. Compose orchestration
@@ -79,6 +72,8 @@ The repository includes `compose.yaml` with these cooperating services:
 - `worker`
 
 This satisfies the EX3 requirement for a local multi-service stack that can be launched with Docker Compose.
+
+For daily local development, the API can also run without Docker by setting `DISABLE_REDIS=1`.
 
 ## 4. Async refresher deliverable
 
@@ -110,13 +105,9 @@ The EX3 security baseline in this project includes:
 4. Re-login so previously issued tokens are replaced.
 5. Re-run the auth-related tests if needed.
 
-This is intentionally documented as a local-development rotation process rather than a production secret-management workflow.
-
 ## 6. Enhancement
 
 The EX3 enhancement is the weekly learning-plan digest generated for public plans by the background worker.
-
-This improves the product without changing its scope or architecture.
 
 ## 7. Automated verification
 
@@ -127,8 +118,6 @@ Main verification assets in the repository:
 - `tests/test_openapi.py`
 - `.github/workflows/ci.yml`
 
-The CI flow is intended to run migrations, pytest, and the Schemathesis-backed OpenAPI checks.
-
 ## 8. Demo flow
 
 The local demo entry point is:
@@ -136,37 +125,19 @@ The local demo entry point is:
 ```bash
 uv run python -m scripts.migrate
 uv run python scripts/seed.py
-./scripts/demo.sh
+uv run uvicorn poseai_backend.main:app --reload
+uv run streamlit run frontend/app.py
 ```
-
-During grading, the recommended order is:
-
-1. start the stack,
-2. verify `/health`,
-3. open the frontend,
-4. sign in or register,
-5. create or edit a plan,
-6. show the worker / digest-related behavior.
 
 ## 9. Trace excerpt
 
-The assignment asks for a real trace excerpt from the local stack.
-I cannot fabricate that section honestly here, so replace the block below after running the helper on your machine.
-
-Command:
+Paste the real local excerpt below after running:
 
 ```bash
 uv run python scripts/capture_trace_excerpt.py
 ```
 
-```text
-```text
-# local-http-trace
-GET /plans -> 200
-GET /plans/shared -> 200
-worker refresh script should be run locally before final submission
-```
-```
+[PASTE LOCAL TRACE EXCERPT HERE]
 
 ## 10. Notes for the grader
 
