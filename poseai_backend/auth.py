@@ -12,7 +12,7 @@ SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "change-me")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
-required_security = HTTPBearer(auto_error=True)
+required_security = HTTPBearer(auto_error=False)
 optional_security = HTTPBearer(auto_error=False)
 
 

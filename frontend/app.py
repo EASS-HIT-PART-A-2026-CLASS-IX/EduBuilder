@@ -32,11 +32,24 @@ def simple_md_to_html(md_text: str) -> str:
     text = text.replace('\n', '<br>')
     return text
 
+
+def display_course_title(title: str) -> str:
+    cleaned = (title or "").strip()
+    patterns = [
+        r"^I Want You To Create A Course For Me On (.+?): Foundations\.?$",
+        r"^I Want You To Create A Course For Me On (.+?)\.?$",
+    ]
+    for pattern in patterns:
+        match = re.match(pattern, cleaned, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    return cleaned
+
 st.set_page_config(
     page_title="EduBuilder AI",
     page_icon="🎓",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 
@@ -234,8 +247,44 @@ def apply_custom_css():
             word-break: break-word;
         }
         /* LTR Chat UI */
+        [data-testid="stBottomBlockContainer"] {
+            background: #ffffff !important;
+            border-top: 1px solid #e5e7eb !important;
+            padding-top: 0.35rem !important;
+        }
+
+        [data-testid="stBottomBlockContainer"] > div {
+            background: #ffffff !important;
+        }
+
+        [data-testid="stChatInputContainer"] {
+            background: #ffffff !important;
+            padding: 0.5rem 0.75rem 0.8rem 0.75rem !important;
+        }
+
         [data-testid="stChatInput"] {
             direction: ltr;
+            background: #ffffff !important;
+            border: 2px solid #f57c00 !important;
+            border-radius: 14px !important;
+            box-shadow: 0 6px 18px rgba(245, 124, 0, 0.16) !important;
+        }
+
+        [data-testid="stChatInput"] textarea,
+        [data-testid="stChatInput"] input {
+            background: #ffffff !important;
+            color: #111111 !important;
+        }
+
+        [data-testid="stChatInput"] textarea::placeholder,
+        [data-testid="stChatInput"] input::placeholder {
+            color: #9a3412 !important;
+            opacity: 0.95 !important;
+        }
+
+        [data-testid="stChatInput"] > div {
+            background: #ffffff !important;
+            border-radius: 14px !important;
         }
 
         /* ---------------- Course Viewer Styling ---------------- */
@@ -256,6 +305,21 @@ def apply_custom_css():
         }
 
         /* ---------------- Sidebar text colors ---------------- */
+
+        [data-testid="stSidebar"] {
+            background: #ffffff !important;
+            border-right: 1px solid #e5e7eb !important;
+        }
+
+        [data-testid="stSidebarContent"] {
+            background: #ffffff !important;
+        }
+
+        [data-testid="collapsedControl"],
+        [data-testid="stExpandSidebarButton"],
+        [data-testid="stSidebarCollapseButton"] {
+            display: none !important;
+        }
         
         .save-ready-note {
             text-align: center;
@@ -347,13 +411,6 @@ def apply_custom_css():
             transform: scale(1.03) !important;
             filter: brightness(1.15) !important;
         }
-/* ---------------- Hide sidebar toggle buttons (no open/close) ---------------- */
-
-[data-testid="collapsedControl"],
-[data-testid="stExpandSidebarButton"],
-[data-testid="stSidebarCollapseButton"] {
-    display: none !important;
-}
         /* ---------------- White Course Viewer Area ---------------- */
 
         .course-viewer-anchor {
@@ -656,7 +713,7 @@ def chat_interface():
 
     user_input = None
     if not st.session_state.get("is_read_only", False):
-        user_input = st.chat_input("What topic would you like to build a course about?")
+        user_input = st.chat_input("you can type here")
     
     if st.session_state.get("_pending_prompt"):
         prompt = st.session_state.pop("_pending_prompt")
@@ -888,39 +945,22 @@ def my_courses_view():
                 color = CARD_COLORS[idx % len(CARD_COLORS)]
                 visibility_label = "Public" if project.get("is_public") else "Private"
                 visibility_icon = "🌐" if project.get("is_public") else "🔒"
-                date_str = (project.get("created_at") or "")[:10]
-                content_html = simple_md_to_html(project.get("content", ""))
-                title_esc = html.escape(project.get("title", ""))
-
-                digest_block = ""
-                if project.get("weekly_digest"):
-                    digest_block = f"""
-                        <div style="margin:0.75rem 0 1rem 0;padding:0.85rem 1rem;
-                                    background:#f8fafc;border-left:4px solid #1f78c1;border-radius:8px;
-                                    color:#111111;">
-                            <strong>Weekly digest:</strong> {html.escape(project["weekly_digest"])}
-                        </div>
-                    """
+                title_esc = html.escape(display_course_title(project.get("title", "")))
 
                 col_title, col_edit, col_share, col_del = st.columns([4, 1.4, 1.4, 1.4])
                 with col_title:
                     st.markdown(f"""
-                        <details style="margin-bottom:0.75rem;border-radius:12px;overflow:hidden;
-                                        box-shadow:0 3px 10px rgba(0,0,0,0.15);">
-                            <summary style="background:{color};padding:0.85rem 1.2rem;color:white;
-                                            font-weight:700;font-size:1rem;cursor:pointer;
-                                            list-style:none;border-radius:12px;">
-                                {title_esc} &nbsp;&middot;&nbsp; {visibility_icon} {visibility_label}
-                            </summary>
-                            <div style="background:white;padding:1.25rem 1.5rem;color:#1f2937;
-                                        border-radius:0 0 12px 12px;">
-                                <p style="color:#6b7280;font-size:0.85rem;margin:0 0 1rem 0;">
-                                    Created on: {date_str}
-                                </p>
-                                {digest_block}
-                                {content_html}
+                        <div style="margin-bottom:0.75rem;border-radius:12px;overflow:hidden;
+                                    box-shadow:0 3px 10px rgba(0,0,0,0.15);
+                                    background:{color};padding:0.95rem 1.2rem;color:white;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;
+                                        font-weight:700;font-size:1rem;line-height:1.35;">
+                                <span>{title_esc}</span>
+                                <span style="font-size:0.95rem;white-space:nowrap;opacity:0.98;">
+                                    {visibility_icon} {visibility_label}
+                                </span>
                             </div>
-                        </details>
+                        </div>
                     """, unsafe_allow_html=True)
 
                 with col_edit:
@@ -1033,40 +1073,23 @@ def shared_courses_view():
                     or project.get("owner_email")
                     or "Unknown user"
                 )
-                date_str = (project.get("created_at") or "")[:10]
-                content_html = simple_md_to_html(project.get("content", ""))
-                title_esc = html.escape(project.get("title", ""))
+                title_esc = html.escape(display_course_title(project.get("title", "")))
                 owner_esc = html.escape(str(owner_name))
-
-                digest_block = ""
-                if project.get("weekly_digest"):
-                    digest_block = f"""
-                        <div style="margin:0.75rem 0 1rem 0;padding:0.85rem 1rem;
-                                    background:#f8fafc;border-left:4px solid #1f78c1;border-radius:8px;
-                                    color:#111111;">
-                            <strong>Weekly digest:</strong> {html.escape(project["weekly_digest"])}
-                        </div>
-                    """
 
                 col_title, col_start = st.columns([5, 1])
                 with col_title:
                     st.markdown(f"""
-                        <details style="margin-bottom:0.75rem;border-radius:12px;overflow:hidden;
-                                        box-shadow:0 3px 10px rgba(0,0,0,0.15);">
-                            <summary style="background:{color};padding:0.85rem 1.2rem;color:white;
-                                            font-weight:700;font-size:1rem;cursor:pointer;
-                                            list-style:none;border-radius:12px;">
-                                {title_esc} &mdash; by {owner_esc}
-                            </summary>
-                            <div style="background:white;padding:1.25rem 1.5rem;color:#1f2937;
-                                        border-radius:0 0 12px 12px;">
-                                <p style="color:#6b7280;font-size:0.85rem;margin:0 0 1rem 0;">
-                                    Uploaded on: {date_str}
-                                </p>
-                                {digest_block}
-                                {content_html}
+                        <div style="margin-bottom:0.75rem;border-radius:12px;overflow:hidden;
+                                    box-shadow:0 3px 10px rgba(0,0,0,0.15);
+                                    background:{color};padding:0.95rem 1.2rem;color:white;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;
+                                        font-weight:700;font-size:1rem;line-height:1.35;">
+                                <span>{title_esc}</span>
+                                <span style="font-size:0.95rem;white-space:nowrap;opacity:0.98;">
+                                    by {owner_esc}
+                                </span>
                             </div>
-                        </details>
+                        </div>
                     """, unsafe_allow_html=True)
 
                 with col_start:
@@ -1136,9 +1159,8 @@ def admin_panel():
                 )
                 visibility_label = "Public" if project.get("is_public") else "Private"
                 visibility_icon  = "🌐" if project.get("is_public") else "🔒"
-                date_str = (project.get("created_at") or "")[:10]
-                content_html = simple_md_to_html(project.get("content", ""))
-                title_esc = html.escape(project.get("title", ""))
+                title_esc = html.escape(display_course_title(project.get("title", "")))
+                owner_esc = html.escape(str(owner_name))
                 
                 # We can just cycle colors based on the project's ID string length or index if we enumerate
                 color = CARD_COLORS[len(project['id']) % len(CARD_COLORS)]
@@ -1146,21 +1168,17 @@ def admin_panel():
                 col1, col2 = st.columns([5, 1])
                 with col1:
                     st.markdown(f"""
-                        <details style="margin-bottom:0.75rem;border-radius:12px;overflow:hidden;
-                                        box-shadow:0 3px 10px rgba(0,0,0,0.15);">
-                            <summary style="background:{color};padding:0.85rem 1.2rem;color:white;
-                                            font-weight:700;font-size:1rem;cursor:pointer;
-                                            list-style:none;border-radius:12px;">
-                                {title_esc} by {owner_name} &nbsp;&middot;&nbsp; {visibility_icon} {visibility_label}
-                            </summary>
-                            <div style="background:white;padding:1.25rem 1.5rem;color:#1f2937;
-                                        border-radius:0 0 12px 12px;">
-                                <p style="color:#6b7280;font-size:0.85rem;margin:0 0 1rem 0;">
-                                    ID: {project['id']} | Created on: {date_str}
-                                </p>
-                                {content_html}
+                        <div style="margin-bottom:0.75rem;border-radius:12px;overflow:hidden;
+                                    box-shadow:0 3px 10px rgba(0,0,0,0.15);
+                                    background:{color};padding:0.95rem 1.2rem;color:white;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;
+                                        font-weight:700;font-size:1rem;line-height:1.35;">
+                                <span>{title_esc}</span>
+                                <span style="font-size:0.95rem;white-space:nowrap;opacity:0.98;">
+                                    by {owner_esc} &nbsp;&middot;&nbsp; {visibility_icon} {visibility_label}
+                                </span>
                             </div>
-                        </details>
+                        </div>
                     """, unsafe_allow_html=True)
                 with col2:
                     if st.button("🗑️ Delete", key=f"del_{project['id']}", use_container_width=True, type="secondary"):
@@ -1229,30 +1247,9 @@ def ensure_guest_user():
 def main():
     ensure_guest_user()
 
-    # Default landing to Shared Courses for EX2 list viewing immediately
-    if "landing_done" not in st.session_state:
-        st.session_state.current_page = "Shared Courses"
-        st.session_state.landing_done = True
-
     if st.session_state.user is None:
         st.error("Could not initialize the guest user. Make sure the backend is running.")
         return
-
-    if not st.session_state.draft_loaded:
-        st.session_state.draft_loaded = True
-        if not st.session_state.messages and load_draft_state():
-            st.rerun()
-
-    # Apply any pending programmatic navigation before the radio widget is instantiated
-    if st.session_state.get("_pending_page"):
-        st.session_state.current_page = st.session_state.pop("_pending_page")
-    ensure_guest_user()
-    
-    # Default landing to Shared Courses for EX2 list viewing immediately
-    if "landing_done" not in st.session_state:
-        st.session_state.current_page = "Shared Courses"
-        st.session_state.landing_done = True
-
 
     if not st.session_state.draft_loaded:
         st.session_state.draft_loaded = True

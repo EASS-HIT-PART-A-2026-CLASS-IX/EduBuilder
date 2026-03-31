@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from poseai_backend.auth import create_access_token
+from poseai_backend.models import Plan
 
 
 def auth_headers(token: str) -> dict:
@@ -136,6 +137,32 @@ def test_private_plan_hidden_from_others(client, user_token):
 
     anonymous_res = client.get(f"/plans/{plan_id}")
     assert anonymous_res.status_code == 403
+
+
+def test_shared_plans_include_weekly_digest_enhancement(client, user_token, session):
+    create_res = client.post(
+        "/plans",
+        json={
+            "title": "Digest plan",
+            "goal": "Practice steadily through the week",
+            "cues": "Review one short lesson each day.",
+            "level": "Beginner",
+            "is_public": True,
+        },
+        headers=auth_headers(user_token),
+    )
+    assert create_res.status_code == 200
+    plan_id = create_res.json()["id"]
+
+    plan = session.get(Plan, plan_id)
+    plan.weekly_digest = "Weekly focus: stay consistent."
+    session.add(plan)
+    session.commit()
+
+    shared_res = client.get("/plans/shared")
+    assert shared_res.status_code == 200
+    matching = next(item for item in shared_res.json() if item["id"] == plan_id)
+    assert matching["weekly_digest"] == "Weekly focus: stay consistent."
 
 
 def test_token_scope_missing_on_admin_route(client, test_user):

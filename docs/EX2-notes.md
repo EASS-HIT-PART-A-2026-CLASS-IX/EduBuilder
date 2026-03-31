@@ -1,9 +1,9 @@
-# EX2 Notes – EduBuilder Frontend
+# EX2 Notes - EduBuilder Frontend
 
 This file presents **EX2 separately** from the richer EX3 interface.
 
 ## Goal
-Show a lightweight Streamlit interface connected to the EX1 API as-is.
+Show a lightweight Streamlit interface connected to the EX1 API as-is, while keeping a chat-style creation flow.
 
 ## Files used for EX2
 - `frontend/app_ex2.py`
@@ -19,8 +19,9 @@ uv run streamlit run frontend/app_ex2.py
 ```
 
 ## What this version includes
+- reuses the EX1 `/plans` API as-is
 - lists existing plans immediately from the backend
-- allows adding a new plan in one screen
+- allows adding a new plan through a chat-style prompt in one screen
 - no authentication or security prompts
 - one small extra:
   - summary metrics for the current catalog
@@ -29,6 +30,6 @@ uv run streamlit run frontend/app_ex2.py
 ## Expected quick flow
 1. Start the FastAPI backend.
 2. Start the Streamlit frontend.
-3. Open the page and view the current catalog.
-4. Add a new plan from the form.
+3. Open the page and view the current catalog immediately.
+4. Add a new plan from the chat prompt.
 5. Optionally export the catalog to CSV.

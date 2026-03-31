@@ -1,7 +1,7 @@
 [project]
-name = "poseai-trainer"
+name = "edubuilder"
 version = "0.1.0"
-description = "PoseAI Trainer academic monorepo for EX1–EX3"
+description = "EduBuilder academic monorepo for EX1-EX3"
 requires-python = ">=3.11"
 
 [tool.pytest.ini_options]

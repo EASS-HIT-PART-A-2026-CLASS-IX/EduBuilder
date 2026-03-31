@@ -20,7 +20,7 @@ anyio
 pytest
 hypothesis
 schemathesis
-httpx
+httpx<0.28
 python-multipart
 
 email-validator

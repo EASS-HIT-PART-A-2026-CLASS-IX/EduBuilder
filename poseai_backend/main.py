@@ -171,9 +171,12 @@ def get_or_create_guest_user(session: Session) -> User:
 
 def get_current_user(
     security_scopes: SecurityScopes,
-    token: HTTPAuthorizationCredentials = Depends(required_security),
+    token: HTTPAuthorizationCredentials | None = Depends(required_security),
     session: Session = Depends(get_session),
 ) -> User:
+    if token is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     payload = decode_access_token(token.credentials)
 
     user_id = payload.get("sub")
